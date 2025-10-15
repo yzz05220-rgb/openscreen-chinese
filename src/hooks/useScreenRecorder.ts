@@ -28,7 +28,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
   const startRecording = async () => {
     try {
-      // Get the selected source from the main process
       const selectedSource = await window.electronAPI.getSelectedSource();
       
       if (!selectedSource) {
@@ -36,10 +35,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         return;
       }
 
-      // Start mouse tracking
       await window.electronAPI.startMouseTracking();
 
-      // Use the selected source
       const stream = await (navigator.mediaDevices as any).getUserMedia({
         audio: false,
         video: {
@@ -55,55 +52,90 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         throw new Error("Failed to get media stream");
       }
       
+      const videoTrack = streamRef.current.getVideoTracks()[0];
+      const settings = videoTrack.getSettings();
+      const width = settings.width || 1920;
+      const height = settings.height || 1080;
+      const totalPixels = width * height;
+      
+      let bitrate: number;
+      if (totalPixels <= 1920 * 1080) {
+        bitrate = 150_000_000; // 150 Mbps for 1080p
+      } else if (totalPixels <= 2560 * 1440) {
+        bitrate = 250_000_000; // 250 Mbps for 1440p
+      } else {
+        bitrate = 400_000_000; // 400 Mbps for 4K
+      }
+      
+      console.log(`Recording at ${width}x${height} with bitrate: ${bitrate / 1_000_000} Mbps`);
+      
       chunksRef.current = [];
-      let mimeType = "video/webm;codecs=vp9";
+      const mimeType = "video/webm;codecs=vp9";
       const recorder = new MediaRecorder(streamRef.current, {
         mimeType,
-        videoBitsPerSecond: 16_000_000,
+        videoBitsPerSecond: bitrate,
       });
       mediaRecorderRef.current = recorder;
+      
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data);
         }
       };
+      
       recorder.onstop = async () => {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
-        }
+        // Don't stop stream here - already stopped in stopRecording for immediate indicator removal
+        // Just cleanup the ref
+        streamRef.current = null;
+        
         if (chunksRef.current.length === 0) return;
         
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
+        const videoBlob = new Blob(chunksRef.current, { type: mimeType });
+        const timestamp = Date.now();
+        const videoFileName = `recording-${timestamp}.webm`;
+        const trackingFileName = `recording-${timestamp}_tracking.json`;
         
-        // Generate filename with timestamp
-        const videoFileName = `recording-${Date.now()}.webm`;
-        a.download = videoFileName;
-        
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 100);
-        
-        // Save mouse tracking data alongside the video
         try {
-          const result = await window.electronAPI.saveMouseTrackingData(videoFileName);
-          if (!result.success) {
-            console.warn('Failed to save tracking data:', result.message);
+          const arrayBuffer = await videoBlob.arrayBuffer();
+          
+          console.log(`Saving video: ${videoFileName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+          
+          const videoResult = await window.electronAPI.storeRecordedVideo(
+            arrayBuffer,
+            videoFileName
+          );
+          
+          if (videoResult.success) {
+            console.log('✅ Video stored:', videoResult.path);
+          } else {
+            console.error('❌ Failed to store video:', videoResult.message);
           }
+          
+          const trackingResult = await window.electronAPI.storeMouseTrackingData(trackingFileName);
+          
+          if (trackingResult.success) {
+            console.log('Mouse tracking stored:', trackingResult.path);
+            console.log(`Captured ${trackingResult.eventCount} mouse events`);
+          } else {
+            console.warn('Failed to store tracking:', trackingResult.message);
+          }
+          
+          console.log('Opening editor window...');
+          await window.electronAPI.switchToEditor();
+          
         } catch (error) {
-          console.error('Error saving tracking data:', error);
+          console.error('Error saving recording:', error);
         }
       };
+      
       recorder.onerror = () => {
         setRecording(false);
       };
+      
       recorder.start(1000);
       setRecording(true);
-    } catch {
+    } catch (error) {
+      console.error('Failed to start recording:', error);
       setRecording(false);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -117,10 +149,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       mediaRecorderRef.current &&
       mediaRecorderRef.current.state === "recording"
     ) {
+      // Stop stream tracks IMMEDIATELY to remove macOS status indicator
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      
       mediaRecorderRef.current.stop();
       setRecording(false);
       
-      // Stop mouse tracking
       window.electronAPI.stopMouseTracking();
     }
   };

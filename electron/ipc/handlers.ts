@@ -2,8 +2,8 @@ import { ipcMain, desktopCapturer, BrowserWindow } from 'electron'
 import { startMouseTracking, stopMouseTracking, getTrackingData } from './mouseTracking'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { RECORDINGS_DIR } from '../main'
 
-// Store selected source
 let selectedSource: any = null
 
 export function registerIpcHandlers(
@@ -12,21 +12,17 @@ export function registerIpcHandlers(
   getMainWindow: () => BrowserWindow | null,
   getSourceSelectorWindow: () => BrowserWindow | null
 ) {
-  // Get available desktop capturer sources
   ipcMain.handle('get-sources', async (_, opts) => {
     const sources = await desktopCapturer.getSources(opts)
-    const processedSources = sources.map(source => ({
+    return sources.map(source => ({
       id: source.id,
       name: source.name,
       display_id: source.display_id,
       thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
       appIcon: source.appIcon ? source.appIcon.toDataURL() : null
     }))
-    
-    return processedSources
   })
 
-  // Select a source for recording
   ipcMain.handle('select-source', (_, source) => {
     selectedSource = source
     const sourceSelectorWin = getSourceSelectorWindow()
@@ -36,12 +32,10 @@ export function registerIpcHandlers(
     return selectedSource
   })
 
-  // Get the currently selected source
   ipcMain.handle('get-selected-source', () => {
     return selectedSource
   })
 
-  // Open the source selector window
   ipcMain.handle('open-source-selector', () => {
     const sourceSelectorWin = getSourceSelectorWindow()
     if (sourceSelectorWin) {
@@ -51,7 +45,6 @@ export function registerIpcHandlers(
     createSourceSelectorWindow()
   })
 
-  // Switch from HUD overlay to editor window
   ipcMain.handle('switch-to-editor', () => {
     const mainWin = getMainWindow()
     if (mainWin) {
@@ -60,18 +53,35 @@ export function registerIpcHandlers(
     createEditorWindow()
   })
 
-  // Start mouse tracking
   ipcMain.handle('start-mouse-tracking', () => {
     return startMouseTracking()
   })
 
-  // Stop mouse tracking
   ipcMain.handle('stop-mouse-tracking', () => {
     return stopMouseTracking()
   })
 
-  // Save mouse tracking data to file
-  ipcMain.handle('save-mouse-tracking-data', async (_, videoFileName: string) => {
+  ipcMain.handle('store-recorded-video', async (_, videoData: ArrayBuffer, fileName: string) => {
+    try {
+      const videoPath = path.join(RECORDINGS_DIR, fileName)
+      await fs.writeFile(videoPath, Buffer.from(videoData))
+      
+      return {
+        success: true,
+        path: videoPath,
+        message: 'Video stored successfully'
+      }
+    } catch (error) {
+      console.error('Failed to store video:', error)
+      return {
+        success: false,
+        message: 'Failed to store video',
+        error: String(error)
+      }
+    }
+  })
+
+  ipcMain.handle('store-mouse-tracking-data', async (_, fileName: string) => {
     try {
       const data = getTrackingData()
       
@@ -79,24 +89,41 @@ export function registerIpcHandlers(
         return { success: false, message: 'No tracking data to save' }
       }
 
-      // Save to the same directory as the video, with .json extension
-      const jsonFileName = videoFileName.replace('.webm', '_tracking.json')
-      const filePath = path.join(process.env.HOME || '', 'Downloads', jsonFileName)
+      const trackingPath = path.join(RECORDINGS_DIR, fileName)
+      await fs.writeFile(trackingPath, JSON.stringify(data, null, 2), 'utf-8')
       
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
-      
-      return { 
-        success: true, 
-        message: 'Tracking data saved',
-        filePath,
-        eventCount: data.length
+      return {
+        success: true,
+        path: trackingPath,
+        eventCount: data.length,
+        message: 'Mouse tracking data stored successfully'
       }
     } catch (error) {
-      return { 
-        success: false, 
-        message: 'Failed to save tracking data',
+      console.error('Failed to store mouse tracking data:', error)
+      return {
+        success: false,
+        message: 'Failed to store mouse tracking data',
         error: String(error)
       }
+    }
+  })
+
+  ipcMain.handle('get-recorded-video-path', async () => {
+    try {
+      const files = await fs.readdir(RECORDINGS_DIR)
+      const videoFiles = files.filter(file => file.endsWith('.webm'))
+      
+      if (videoFiles.length === 0) {
+        return { success: false, message: 'No recorded video found' }
+      }
+      
+      const latestVideo = videoFiles.sort().reverse()[0]
+      const videoPath = path.join(RECORDINGS_DIR, latestVideo)
+      
+      return { success: true, path: videoPath }
+    } catch (error) {
+      console.error('Failed to get video path:', error)
+      return { success: false, message: 'Failed to get video path', error: String(error) }
     }
   })
 }

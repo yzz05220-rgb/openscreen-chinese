@@ -1,11 +1,44 @@
 import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import fs from 'node:fs/promises'
 import { createHudOverlayWindow, createEditorWindow, createSourceSelectorWindow } from './windows'
 import { registerIpcHandlers } from './ipc/handlers'
 import { cleanupMouseTracking } from './ipc/mouseTracking'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+export const RECORDINGS_DIR = path.join(app.getPath('userData'), 'recordings')
+
+// Cleanup old recordings (older than 1 day)
+async function cleanupOldRecordings() {
+  try {
+    const files = await fs.readdir(RECORDINGS_DIR)
+    const now = Date.now()
+    const maxAge = 1 * 24 * 60 * 60 * 1000
+    
+    for (const file of files) {
+      const filePath = path.join(RECORDINGS_DIR, file)
+      const stats = await fs.stat(filePath)
+      
+      if (now - stats.mtimeMs > maxAge) {
+        await fs.unlink(filePath)
+        console.log(`Deleted old recording: ${file}`)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to cleanup old recordings:', error)
+  }
+}
+
+async function ensureRecordingsDir() {
+  try {
+    await fs.mkdir(RECORDINGS_DIR, { recursive: true })
+    console.log('Recordings directory ready:', RECORDINGS_DIR)
+  } catch (error) {
+    console.error('Failed to create recordings directory:', error)
+  }
+}
 
 // The built directory structure
 //
@@ -68,12 +101,19 @@ app.on('activate', () => {
   }
 })
 
-app.on('will-quit', () => {
+// Cleanup old recordings on quit (both macOS and other platforms)
+app.on('before-quit', async (event) => {
+  event.preventDefault()
   cleanupMouseTracking()
+  await cleanupOldRecordings()
+  app.exit(0)
 })
 
 // Register all IPC handlers when app is ready
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Ensure recordings directory exists
+  await ensureRecordingsDir()
+  
   registerIpcHandlers(
     createEditorWindowWrapper,
     createSourceSelectorWindowWrapper,

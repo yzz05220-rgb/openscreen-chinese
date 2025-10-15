@@ -22,7 +22,13 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   stopMouseTracking: () => {
     return electron.ipcRenderer.invoke("stop-mouse-tracking");
   },
-  saveMouseTrackingData: (videoFileName) => {
-    return electron.ipcRenderer.invoke("save-mouse-tracking-data", videoFileName);
+  storeRecordedVideo: (videoData, fileName) => {
+    return electron.ipcRenderer.invoke("store-recorded-video", videoData, fileName);
+  },
+  storeMouseTrackingData: (fileName) => {
+    return electron.ipcRenderer.invoke("store-mouse-tracking-data", fileName);
+  },
+  getRecordedVideoPath: () => {
+    return electron.ipcRenderer.invoke("get-recorded-video-path");
   }
 });

@@ -17,11 +17,24 @@ interface Window {
     getSelectedSource: () => Promise<any>
     startMouseTracking: () => Promise<{ success: boolean; startTime?: number }>
     stopMouseTracking: () => Promise<{ success: boolean; data?: any }>
-    saveMouseTrackingData: (videoFileName: string) => Promise<{ 
+    storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => Promise<{
       success: boolean
+      path?: string
       message: string
-      filePath?: string
+      error?: string
+    }>
+    storeMouseTrackingData: (fileName: string) => Promise<{
+      success: boolean
+      path?: string
       eventCount?: number
+      message: string
+      error?: string
+    }>
+    getRecordedVideoPath: () => Promise<{
+      success: boolean
+      path?: string
+      message?: string
+      error?: string
     }>
   }
 }

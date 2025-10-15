@@ -1,5 +1,6 @@
 import { LaunchWindow } from "./components/LaunchWindow";
 import { SourceSelector } from "./components/SourceSelector";
+import { VideoEditor } from "./components/VideoEditor";
 import { useEffect, useState } from "react";
 
 export default function App() {
@@ -28,12 +29,7 @@ export default function App() {
   }
 
   if (windowType === 'editor') {
-    return (
-      <div className="w-full h-full bg-background text-foreground p-6">
-        <h1 className="text-2xl font-bold mb-4">Video Editor</h1>
-        <p>Recording stopped. Video editor interface coming soon...</p>
-      </div>
-    );
+    return <VideoEditor />;
   }
 
   return (

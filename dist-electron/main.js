@@ -1,8 +1,8 @@
 import { BrowserWindow, screen, ipcMain, desktopCapturer, app } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { uIOhook } from "uiohook-napi";
 import fs from "node:fs/promises";
+import { uIOhook } from "uiohook-napi";
 const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL$1 = process.env["VITE_DEV_SERVER_URL"];
@@ -54,7 +54,8 @@ function createEditorWindow() {
     webPreferences: {
       preload: path.join(__dirname$1, "preload.mjs"),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webSecurity: false
     }
   });
   win.webContents.on("did-finish-load", () => {
@@ -214,14 +215,13 @@ let selectedSource = null;
 function registerIpcHandlers(createEditorWindow2, createSourceSelectorWindow2, getMainWindow, getSourceSelectorWindow) {
   ipcMain.handle("get-sources", async (_, opts) => {
     const sources = await desktopCapturer.getSources(opts);
-    const processedSources = sources.map((source) => ({
+    return sources.map((source) => ({
       id: source.id,
       name: source.name,
       display_id: source.display_id,
       thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
       appIcon: source.appIcon ? source.appIcon.toDataURL() : null
     }));
-    return processedSources;
   });
   ipcMain.handle("select-source", (_, source) => {
     selectedSource = source;
@@ -255,31 +255,90 @@ function registerIpcHandlers(createEditorWindow2, createSourceSelectorWindow2, g
   ipcMain.handle("stop-mouse-tracking", () => {
     return stopMouseTracking();
   });
-  ipcMain.handle("save-mouse-tracking-data", async (_, videoFileName) => {
+  ipcMain.handle("store-recorded-video", async (_, videoData, fileName) => {
+    try {
+      const videoPath = path.join(RECORDINGS_DIR, fileName);
+      await fs.writeFile(videoPath, Buffer.from(videoData));
+      return {
+        success: true,
+        path: videoPath,
+        message: "Video stored successfully"
+      };
+    } catch (error) {
+      console.error("Failed to store video:", error);
+      return {
+        success: false,
+        message: "Failed to store video",
+        error: String(error)
+      };
+    }
+  });
+  ipcMain.handle("store-mouse-tracking-data", async (_, fileName) => {
     try {
       const data = getTrackingData();
       if (data.length === 0) {
         return { success: false, message: "No tracking data to save" };
       }
-      const jsonFileName = videoFileName.replace(".webm", "_tracking.json");
-      const filePath = path.join(process.env.HOME || "", "Downloads", jsonFileName);
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+      const trackingPath = path.join(RECORDINGS_DIR, fileName);
+      await fs.writeFile(trackingPath, JSON.stringify(data, null, 2), "utf-8");
       return {
         success: true,
-        message: "Tracking data saved",
-        filePath,
-        eventCount: data.length
+        path: trackingPath,
+        eventCount: data.length,
+        message: "Mouse tracking data stored successfully"
       };
     } catch (error) {
+      console.error("Failed to store mouse tracking data:", error);
       return {
         success: false,
-        message: "Failed to save tracking data",
+        message: "Failed to store mouse tracking data",
         error: String(error)
       };
     }
   });
+  ipcMain.handle("get-recorded-video-path", async () => {
+    try {
+      const files = await fs.readdir(RECORDINGS_DIR);
+      const videoFiles = files.filter((file) => file.endsWith(".webm"));
+      if (videoFiles.length === 0) {
+        return { success: false, message: "No recorded video found" };
+      }
+      const latestVideo = videoFiles.sort().reverse()[0];
+      const videoPath = path.join(RECORDINGS_DIR, latestVideo);
+      return { success: true, path: videoPath };
+    } catch (error) {
+      console.error("Failed to get video path:", error);
+      return { success: false, message: "Failed to get video path", error: String(error) };
+    }
+  });
 }
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RECORDINGS_DIR = path.join(app.getPath("userData"), "recordings");
+async function cleanupOldRecordings() {
+  try {
+    const files = await fs.readdir(RECORDINGS_DIR);
+    const now = Date.now();
+    const maxAge = 7 * 24 * 60 * 60 * 1e3;
+    for (const file of files) {
+      const filePath = path.join(RECORDINGS_DIR, file);
+      const stats = await fs.stat(filePath);
+      if (now - stats.mtimeMs > maxAge) {
+        await fs.unlink(filePath);
+        console.log(`Deleted old recording: ${file}`);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to cleanup old recordings:", error);
+  }
+}
+async function ensureRecordingsDir() {
+  try {
+    await fs.mkdir(RECORDINGS_DIR, { recursive: true });
+    console.log("Recordings directory ready:", RECORDINGS_DIR);
+  } catch (error) {
+    console.error("Failed to create recordings directory:", error);
+  }
+}
 process.env.APP_ROOT = path.join(__dirname, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
@@ -316,10 +375,14 @@ app.on("activate", () => {
     createWindow();
   }
 });
-app.on("will-quit", () => {
+app.on("before-quit", async (event) => {
+  event.preventDefault();
   cleanupMouseTracking();
+  await cleanupOldRecordings();
+  app.exit(0);
 });
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await ensureRecordingsDir();
   registerIpcHandlers(
     createEditorWindowWrapper,
     createSourceSelectorWindowWrapper,
@@ -330,6 +393,7 @@ app.whenReady().then(() => {
 });
 export {
   MAIN_DIST,
+  RECORDINGS_DIR,
   RENDERER_DIST,
   VITE_DEV_SERVER_URL
 };
