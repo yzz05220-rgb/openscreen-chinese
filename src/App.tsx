@@ -1,40 +1,34 @@
-import { LaunchWindow } from "./components/LaunchWindow";
-import { SourceSelector } from "./components/SourceSelector";
-import VideoEditor from "./components/VideoEditor";
 import { useEffect, useState } from "react";
+import { LaunchWindow } from "./components/launch/LaunchWindow";
+import { SourceSelector } from "./components/launch/SourceSelector";
+import VideoEditor from "./components/video-editor/VideoEditor";
 
 export default function App() {
-  const [windowType, setWindowType] = useState<string>('');
+  const [windowType, setWindowType] = useState('');
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const type = urlParams.get('windowType') || 'default';
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('windowType') || '';
     setWindowType(type);
-
-    // Apply transparency only for HUD overlay windows
     if (type === 'hud-overlay') {
       document.body.style.background = 'transparent';
       document.documentElement.style.background = 'transparent';
-      const root = document.getElementById('root');
-      if (root) root.style.background = 'transparent';
+      document.getElementById('root')?.style.setProperty('background', 'transparent');
     }
   }, []);
 
-  if (windowType === 'hud-overlay') {
-    return <LaunchWindow />;
+  switch (windowType) {
+    case 'hud-overlay':
+      return <LaunchWindow />;
+    case 'source-selector':
+      return <SourceSelector />;
+    case 'editor':
+      return <VideoEditor />;
+    default:
+      return (
+        <div className="w-full h-full bg-background text-foreground">
+          <h1>Pangolin</h1>
+        </div>
+      );
   }
-
-  if (windowType === 'source-selector') {
-    return <SourceSelector />;
-  }
-
-  if (windowType === 'editor') {
-    return <VideoEditor />;
-  }
-
-  return (
-    <div className="w-full h-full bg-background text-foreground">
-      <h1>Pangolin</h1>
-    </div>
-  );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useScreenRecorder } from "../hooks/useScreenRecorder";
-import { Button } from "@/components/ui/button";
+import { useScreenRecorder } from "../../hooks/useScreenRecorder";
+import { Button } from "../ui/button";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import { MdMonitor } from "react-icons/md";
@@ -42,12 +42,12 @@ export function LaunchWindow() {
   };
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-transparent">
-      <div className="flex items-center gap-6 backdrop-blur-xl bg-black/80 rounded-full px-6 py-3 shadow-2xl border border-white/20">
+    <div className="w-full h-full flex items-center bg-transparent">
+      <div className="w-full max-w-2xl mx-auto flex items-center justify-between backdrop-blur-xl bg-black/80 rounded-full px-6 py-3 shadow-2xl border border-white/20">
         <Button
           variant="link"
           size="sm"
-          className="gap-2 text-white bg-transparent hover:bg-transparent px-0"
+          className="gap-2 text-white bg-transparent hover:bg-transparent px-0 flex-1 text-left"
           onClick={openSourceSelector}
         >
           <MdMonitor size={16} className="text-white" />
@@ -61,7 +61,7 @@ export function LaunchWindow() {
           size="sm"
           onClick={hasSelectedSource ? toggleRecording : openSourceSelector}
           disabled={!hasSelectedSource && !recording}
-          className="gap-2 bg-transparent hover:bg-transparent px-0"
+          className="gap-2 bg-transparent hover:bg-transparent px-0 flex-1 text-right"
         >
           {recording ? (
             <>
