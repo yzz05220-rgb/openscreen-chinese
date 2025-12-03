@@ -1,5 +1,4 @@
 import { Application, Sprite, Graphics } from 'pixi.js';
-import { VIEWPORT_SCALE } from "./constants";
 import type { CropRegion } from '../types';
 
 interface LayoutParams {

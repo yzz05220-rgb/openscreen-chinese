@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
+import { type AspectRatio } from "@/utils/aspectRatioUtils";
 
 interface CropRegion {
   x: number; // 0-1 normalized
@@ -18,7 +18,7 @@ interface CropControlProps {
 
 type DragHandle = 'top' | 'right' | 'bottom' | 'left' | null;
 
-export function CropControl({ videoElement, cropRegion, onCropChange, aspectRatio }: CropControlProps) {
+export function CropControl({ videoElement, cropRegion, onCropChange }: CropControlProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState<DragHandle>(null);
