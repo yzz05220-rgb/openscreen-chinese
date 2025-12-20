@@ -1,10 +1,14 @@
-import { ipcMain, desktopCapturer, BrowserWindow, shell, app, dialog } from 'electron'
+import { ipcMain, desktopCapturer, BrowserWindow, shell, app, dialog, screen } from 'electron'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { RECORDINGS_DIR } from '../main'
 
 let selectedSource: any = null
+let mouseTrackingInterval: NodeJS.Timeout | null = null
+let mousePositions: Array<{ time: number; x: number; y: number }> = []
+let mouseTrackingStartTime: number = 0
+let recordingSourceBounds: { x: number; y: number; width: number; height: number } | null = null
 
 export function registerIpcHandlers(
   createEditorWindow: () => void,
@@ -61,6 +65,20 @@ export function registerIpcHandlers(
       const videoPath = path.join(RECORDINGS_DIR, fileName)
       await fs.writeFile(videoPath, Buffer.from(videoData))
       currentVideoPath = videoPath;
+      
+      // 保存鼠标位置数据
+      if (mousePositions.length > 0) {
+        const mouseDataFileName = fileName.replace(/\.[^.]+$/, '.mouse.json')
+        const mouseDataPath = path.join(RECORDINGS_DIR, mouseDataFileName)
+        await fs.writeFile(mouseDataPath, JSON.stringify({
+          version: 1,
+          frameRate: 30,
+          positions: mousePositions
+        }))
+        console.log(`Mouse data saved: ${mousePositions.length} positions`)
+        mousePositions = [] // 清空数据
+      }
+      
       return {
         success: true,
         path: videoPath,
@@ -101,6 +119,62 @@ export function registerIpcHandlers(
     const source = selectedSource || { name: 'Screen' }
     if (onRecordingStateChange) {
       onRecordingStateChange(recording, source.name)
+    }
+    
+    // 鼠标位置追踪
+    if (recording) {
+      // 开始录制时，获取录制源的边界
+      // 对于全屏录制，获取显示器边界
+      // 对于窗口录制，需要从 source 获取窗口位置
+      recordingSourceBounds = null
+      
+      if (selectedSource) {
+        // 检查是否是显示器录制
+        if (selectedSource.display_id) {
+          const displays = screen.getAllDisplays()
+          const targetDisplay = displays.find(d => String(d.id) === selectedSource.display_id)
+          if (targetDisplay) {
+            recordingSourceBounds = targetDisplay.bounds
+          }
+        }
+        
+        // 如果没有找到显示器边界，使用主显示器
+        if (!recordingSourceBounds) {
+          const primaryDisplay = screen.getPrimaryDisplay()
+          recordingSourceBounds = primaryDisplay.bounds
+        }
+      }
+      
+      mousePositions = []
+      mouseTrackingStartTime = Date.now()
+      
+      // 每 33ms 记录一次鼠标位置（约 30fps）
+      mouseTrackingInterval = setInterval(() => {
+        const cursorPos = screen.getCursorScreenPoint()
+        const time = Date.now() - mouseTrackingStartTime
+        
+        // 将屏幕坐标转换为相对于录制区域的坐标
+        let relativeX = cursorPos.x
+        let relativeY = cursorPos.y
+        
+        if (recordingSourceBounds) {
+          relativeX = cursorPos.x - recordingSourceBounds.x
+          relativeY = cursorPos.y - recordingSourceBounds.y
+        }
+        
+        mousePositions.push({
+          time,
+          x: relativeX,
+          y: relativeY
+        })
+      }, 33)
+    } else {
+      // 停止录制时，停止鼠标追踪
+      if (mouseTrackingInterval) {
+        clearInterval(mouseTrackingInterval)
+        mouseTrackingInterval = null
+      }
+      recordingSourceBounds = null
     }
   })
 
@@ -211,5 +285,36 @@ export function registerIpcHandlers(
 
   ipcMain.handle('get-platform', () => {
     return process.platform;
+  });
+
+  // 获取视频对应的鼠标位置数据
+  ipcMain.handle('get-mouse-data', async (_, videoPath: string) => {
+    try {
+      // 从视频路径推断鼠标数据文件路径
+      const mouseDataPath = videoPath.replace(/\.[^.]+$/, '.mouse.json')
+      
+      try {
+        const data = await fs.readFile(mouseDataPath, 'utf-8')
+        const mouseData = JSON.parse(data)
+        return {
+          success: true,
+          data: mouseData
+        }
+      } catch (readError) {
+        // 文件不存在，返回空数据
+        return {
+          success: true,
+          data: null,
+          message: 'No mouse data found for this video'
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get mouse data:', error)
+      return {
+        success: false,
+        message: 'Failed to get mouse data',
+        error: String(error)
+      }
+    }
   });
 }

@@ -40,6 +40,17 @@ interface Window {
     getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>
     clearCurrentVideoPath: () => Promise<{ success: boolean }>
     getPlatform: () => Promise<string>
+    getAssetBasePath: () => Promise<string | null>
+    getMouseData: (videoPath: string) => Promise<{
+      success: boolean
+      data?: {
+        version: number
+        frameRate: number
+        positions: Array<{ time: number; x: number; y: number }>
+      } | null
+      message?: string
+      error?: string
+    }>
     hudOverlayHide: () => void;
     hudOverlayClose: () => void;
   }

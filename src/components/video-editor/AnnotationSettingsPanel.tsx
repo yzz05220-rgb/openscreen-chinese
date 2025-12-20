@@ -1,8 +1,10 @@
-import {useRef } from "react";
+import { useRef, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Trash2, Type, Image as ImageIcon, Upload, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, ChevronDown, Info } from "lucide-react";
+import { Trash2, Type, Image as ImageIcon, Upload, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, ChevronDown, Info, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { generateImageFromText, generateImageFromReference, type ImageQuality } from "@/lib/imageGen/imagenService";
 import Block from '@uiw/react-color-block';
 import type { AnnotationRegion, AnnotationType, ArrowDirection, FigureData } from "./types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -42,7 +44,57 @@ export function AnnotationSettingsPanel({
   onFigureDataChange,
   onDelete,
 }: AnnotationSettingsPanelProps) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // AI 图像生成状态
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiQuality, setAiQuality] = useState<ImageQuality>('efficiency');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [imageApiKey, setImageApiKey] = useState(() => {
+    // 从 localStorage 加载已保存的 API Key
+    return localStorage.getItem('openscreen_gemini_api_key') || '';
+  });
+  
+  // AI 图像生成处理
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error(t('imageGen.noPrompt'));
+      return;
+    }
+    
+    if (!imageApiKey.trim()) {
+      toast.error('请先输入 API Key');
+      return;
+    }
+    
+    setIsGenerating(true);
+    
+    try {
+      let result;
+      
+      // 如果已有图片，使用图生图
+      if (annotation.content && annotation.content.startsWith('data:image')) {
+        result = await generateImageFromReference(aiPrompt, annotation.content, aiQuality, imageApiKey);
+      } else {
+        // 否则使用文生图
+        result = await generateImageFromText(aiPrompt, aiQuality, imageApiKey);
+      }
+      
+      if (result.success && result.imageBase64) {
+        onContentChange(result.imageBase64);
+        toast.success(t('imageGen.success'));
+        setAiPrompt('');
+      } else {
+        toast.error(result.error || t('imageGen.failed'));
+      }
+    } catch (error) {
+      toast.error(t('imageGen.failed'));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
   const colorPalette = [
     '#FF0000', // Red
     '#FFD700', // Yellow/Gold
@@ -73,8 +125,8 @@ export function AnnotationSettingsPanel({
     // Validate file type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      toast.error('Invalid file type', {
-        description: 'Please upload a JPG, PNG, GIF, or WebP image file.',
+      toast.error(t('editor.invalidFileType'), {
+        description: t('editor.pleaseUploadImage'),
       });
       event.target.value = '';
       return;
@@ -86,13 +138,13 @@ export function AnnotationSettingsPanel({
       const dataUrl = e.target?.result as string;
       if (dataUrl) {
         onContentChange(dataUrl);
-        toast.success('Image uploaded successfully!');
+        toast.success(t('editor.imageUploadSuccess'));
       }
     };
 
     reader.onerror = () => {
-      toast.error('Failed to upload image', {
-        description: 'There was an error reading the file.',
+      toast.error(t('editor.failedToUpload'), {
+        description: t('editor.errorReadingFile'),
       });
     };
 
@@ -101,12 +153,12 @@ export function AnnotationSettingsPanel({
   };
 
   return (
-    <div className="flex-[2] min-w-0 bg-[#09090b] border border-white/5 rounded-2xl p-4 flex flex-col shadow-xl h-full overflow-y-auto custom-scrollbar">
+    <div className="w-full bg-[#09090b] border border-white/5 rounded-2xl p-4 flex flex-col shadow-xl min-h-full">
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-medium text-slate-200">Annotation Settings</span>
+          <span className="text-sm font-medium text-slate-200">{t('editor.annotationSettings')}</span>
           <span className="text-[10px] uppercase tracking-wider font-medium text-[#34B27B] bg-[#34B27B]/10 px-2 py-1 rounded-full">
-            Active
+            {t('common.active')}
           </span>
         </div>
         
@@ -115,28 +167,28 @@ export function AnnotationSettingsPanel({
           <TabsList className="mb-4 bg-white/5 border border-white/5 p-1 w-full grid grid-cols-3 h-auto rounded-xl">
             <TabsTrigger value="text" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
               <Type className="w-4 h-4" />
-              Text
+              {t('editor.text')}
             </TabsTrigger>
             <TabsTrigger value="image" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
               <ImageIcon className="w-4 h-4" />
-              Image
+              {t('editor.image')}
             </TabsTrigger>
             <TabsTrigger value="figure" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 12h16m0 0l-6-6m6 6l-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              Arrow
+              {t('editor.arrow')}
             </TabsTrigger>
           </TabsList>
 
           {/* Text Content */}
           <TabsContent value="text" className="mt-0 space-y-4">
             <div>
-              <label className="text-xs font-medium text-slate-200 mb-2 block">Text Content</label>
+              <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.textContent')}</label>
               <textarea
                 value={annotation.textContent || annotation.content}
                 onChange={(e) => onContentChange(e.target.value)}
-                placeholder="Enter your text..."
+                placeholder={t('editor.enterText')}
                 rows={5}
                 className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#34B27B] focus:border-transparent resize-none"
               />
@@ -147,13 +199,13 @@ export function AnnotationSettingsPanel({
               {/* Font Family & Size */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-slate-200 mb-2 block">Font Style</label>
+                  <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.fontStyle')}</label>
                   <Select 
                     value={annotation.style.fontFamily} 
                     onValueChange={(value) => onStyleChange({ fontFamily: value })}
                   >
                     <SelectTrigger className="w-full bg-white/5 border-white/10 text-slate-200 h-9 text-xs">
-                      <SelectValue placeholder="Select style" />
+                      <SelectValue placeholder={t('editor.fontStyle')} />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1a1a1c] border-white/10 text-slate-200">
                       {FONT_FAMILIES.map((font) => (
@@ -165,13 +217,13 @@ export function AnnotationSettingsPanel({
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-200 mb-2 block">Size</label>
+                  <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.size')}</label>
                   <Select 
                     value={annotation.style.fontSize.toString()} 
                     onValueChange={(value) => onStyleChange({ fontSize: parseInt(value) })}
                   >
                     <SelectTrigger className="w-full bg-white/5 border-white/10 text-slate-200 h-9 text-xs">
-                      <SelectValue placeholder="Size" />
+                      <SelectValue placeholder={t('editor.size')} />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1a1a1c] border-white/10 text-slate-200 max-h-[200px]">
                       {FONT_SIZES.map((size) => (
@@ -247,7 +299,7 @@ export function AnnotationSettingsPanel({
               {/* Colors */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-medium text-slate-200 mb-2 block">Text Color</label>
+                  <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.textColor')}</label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button 
@@ -279,7 +331,7 @@ export function AnnotationSettingsPanel({
                   </Popover>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-200 mb-2 block">Background</label>
+                  <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.background')}</label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button 
@@ -296,7 +348,7 @@ export function AnnotationSettingsPanel({
                           />
                         </div>
                         <span className="text-xs text-slate-300 truncate flex-1 text-left">
-                          {annotation.style.backgroundColor === 'transparent' ? 'None' : 'Color'}
+                          {annotation.style.backgroundColor === 'transparent' ? t('editor.none') : t('editor.color')}
                         </span>
                         <ChevronDown className="h-3 w-3 opacity-50" />
                       </Button>
@@ -320,7 +372,7 @@ export function AnnotationSettingsPanel({
                           onStyleChange({ backgroundColor: 'transparent' });
                         }}
                       >
-                        Clear Background
+                        {t('editor.clearBackground')}
                       </Button>
                     </PopoverContent>
                   </Popover>
@@ -346,7 +398,7 @@ export function AnnotationSettingsPanel({
               className="w-full gap-2 bg-white/5 text-slate-200 border-white/10 hover:bg-[#34B27B] hover:text-white hover:border-[#34B27B] transition-all py-8"
             >
               <Upload className="w-5 h-5" />
-              Upload Image
+              {t('editor.uploadImage')}
             </Button>
 
             {annotation.content && annotation.content.startsWith('data:image') && (
@@ -360,13 +412,114 @@ export function AnnotationSettingsPanel({
             )}
 
             <p className="text-xs text-slate-500 text-center leading-relaxed">
-              Supported formats: JPG, PNG, GIF, WebP
+              {t('editor.supportedFormats')}
             </p>
+            
+            {/* AI 图像生成区域 */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-[#34B27B]" />
+                <span className="text-xs font-medium text-slate-200">{t('imageGen.title')}</span>
+              </div>
+              
+              {/* API Key 输入 */}
+              <div className="mb-3">
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={imageApiKey}
+                    onChange={(e) => setImageApiKey(e.target.value)}
+                    placeholder="输入 Gemini API Key (AIzaSy...)"
+                    className="flex-1 h-8 text-xs bg-white/5 border border-white/10 rounded-lg px-3 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#34B27B]"
+                  />
+                  <Button
+                    onClick={() => {
+                      if (imageApiKey.trim()) {
+                        localStorage.setItem('openscreen_gemini_api_key', imageApiKey.trim());
+                        toast.success('API Key 已保存');
+                      }
+                    }}
+                    disabled={!imageApiKey.trim()}
+                    size="sm"
+                    className="h-8 px-3 bg-[#34B27B] hover:bg-[#2da36c] text-white text-xs disabled:opacity-50"
+                  >
+                    保存
+                  </Button>
+                </div>
+              </div>
+              
+              {/* 提示词输入 */}
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder={annotation.content && annotation.content.startsWith('data:image') 
+                  ? t('imageGen.promptPlaceholderRef') 
+                  : t('imageGen.promptPlaceholder')}
+                rows={3}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#34B27B] focus:border-transparent resize-none mb-3"
+              />
+              
+              {/* 质量选择 */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-slate-400">{t('imageGen.quality')}:</span>
+                <div className="flex gap-1 flex-1">
+                  <button
+                    onClick={() => setAiQuality('efficiency')}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 text-xs rounded-lg transition-all",
+                      aiQuality === 'efficiency'
+                        ? "bg-[#34B27B] text-white"
+                        : "bg-white/5 text-slate-400 hover:bg-white/10"
+                    )}
+                  >
+                    {t('imageGen.efficiency')}
+                  </button>
+                  <button
+                    onClick={() => setAiQuality('quality')}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 text-xs rounded-lg transition-all",
+                      aiQuality === 'quality'
+                        ? "bg-[#34B27B] text-white"
+                        : "bg-white/5 text-slate-400 hover:bg-white/10"
+                    )}
+                  >
+                    {t('imageGen.qualityOption')}
+                  </button>
+                </div>
+              </div>
+              
+              {/* 生成按钮 */}
+              <Button
+                onClick={handleAiGenerate}
+                disabled={isGenerating || !aiPrompt.trim() || !imageApiKey.trim()}
+                className="w-full gap-2 bg-[#34B27B] hover:bg-[#2da36c] text-white transition-all disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {t('imageGen.generating')}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    {annotation.content && annotation.content.startsWith('data:image')
+                      ? t('imageGen.generateFromRef')
+                      : t('imageGen.generate')}
+                  </>
+                )}
+              </Button>
+              
+              {/* 提示信息 */}
+              <p className="text-[10px] text-slate-500 text-center mt-2 leading-relaxed">
+                {annotation.content && annotation.content.startsWith('data:image')
+                  ? t('imageGen.refHint')
+                  : t('imageGen.hint')}
+              </p>
+            </div>
           </TabsContent>
-
           <TabsContent value="figure" className="mt-0 space-y-4">
             <div>
-              <label className="text-xs font-medium text-slate-200 mb-3 block">Arrow Direction</label>
+              <label className="text-xs font-medium text-slate-200 mb-3 block">{t('editor.arrowDirection')}</label>
               <div className="grid grid-cols-4 gap-2">
                 {([
                   'up', 'down', 'left', 'right',
@@ -402,7 +555,7 @@ export function AnnotationSettingsPanel({
 
             <div>
               <label className="text-xs font-medium text-slate-200 mb-2 block">
-                Stroke Width: {annotation.figureData?.strokeWidth || 4}px
+                {t('editor.strokeWidth')}: {annotation.figureData?.strokeWidth || 4}px
               </label>
               <Slider
                 value={[annotation.figureData?.strokeWidth || 4]}
@@ -421,7 +574,7 @@ export function AnnotationSettingsPanel({
             </div>
 
             <div>
-              <label className="text-xs font-medium text-slate-200 mb-2 block">Arrow Color</label>
+              <label className="text-xs font-medium text-slate-200 mb-2 block">{t('editor.arrowColor')}</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button 
@@ -466,18 +619,18 @@ export function AnnotationSettingsPanel({
           className="w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all mt-4"
         >
           <Trash2 className="w-4 h-4" />
-          Delete Annotation
+          {t('editor.deleteAnnotation')}
         </Button>
 
         <div className="mt-6 p-3 bg-white/5 rounded-lg border border-white/5">
           <div className="flex items-center gap-2 mb-2 text-slate-300">
             <Info className="w-3.5 h-3.5" />
-            <span className="text-xs font-medium">Shortcuts & Tips</span>
+            <span className="text-xs font-medium">{t('editor.shortcutsAndTips')}</span>
           </div>
           <ul className="text-[10px] text-slate-400 space-y-1.5 list-disc pl-3 leading-relaxed">
-            <li>Move playhead to overlapping annotation section and select an item.</li>
-            <li>Use <kbd className="px-1 py-0.5 bg-white/10 rounded text-slate-300 font-mono">Tab</kbd> to cycle through overlapping items.</li>
-            <li>Use <kbd className="px-1 py-0.5 bg-white/10 rounded text-slate-300 font-mono">Shift+Tab</kbd> to cycle backwards.</li>
+            <li>{t('editor.tipMovePlayhead')}</li>
+            <li>{t('editor.tipTabCycle')}</li>
+            <li>{t('editor.tipShiftTabCycle')}</li>
           </ul>
         </div>
       </div>

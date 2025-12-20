@@ -23,7 +23,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 
   const windowWidth = 500;
-  const windowHeight = 100;
+  const windowHeight = 280;
 
   const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
   const y = Math.floor(workArea.y + workArea.height - windowHeight - 5);
@@ -33,8 +33,8 @@ export function createHudOverlayWindow(): BrowserWindow {
     height: windowHeight,
     minWidth: 500,
     maxWidth: 500,
-    minHeight: 100,
-    maxHeight: 100,
+    minHeight: 280,
+    maxHeight: 280,
     x: x,
     y: y,
     frame: false,
@@ -78,6 +78,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 export function createEditorWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
   const win = new BrowserWindow({
     width: 1200,
@@ -88,12 +89,16 @@ export function createEditorWindow(): BrowserWindow {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 12, y: 12 },
     }),
+    // Windows: 隐藏菜单栏，使用自定义标题栏
+    ...(isWindows && {
+      autoHideMenuBar: true,
+    }),
     transparent: false,
     resizable: true,
     alwaysOnTop: false,
     skipTaskbar: false,
     title: 'OpenScreen',
-    backgroundColor: '#000000',
+    backgroundColor: '#09090b',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,

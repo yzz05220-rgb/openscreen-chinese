@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ExportProgress } from '@/lib/exporter';
@@ -20,6 +21,7 @@ export function ExportDialog({
   error,
   onCancel,
 }: ExportDialogProps) {
+  const { t } = useTranslation();
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
@@ -50,8 +52,8 @@ export function ExportDialog({
                   <Download className="w-6 h-6 text-[#34B27B]" />
                 </div>
                 <div>
-                  <span className="text-xl font-bold text-slate-200 block">Export Complete</span>
-                  <span className="text-sm text-slate-400">Your video is ready</span>
+                  <span className="text-xl font-bold text-slate-200 block">{t('editor.exportComplete')}</span>
+                  <span className="text-sm text-slate-400">{t('editor.yourVideoIsReady')}</span>
                 </div>
               </>
             ) : (

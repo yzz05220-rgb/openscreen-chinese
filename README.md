@@ -1,94 +1,68 @@
 <p align="center">
   <img src="openscreen.png" alt="OpenScreen Logo" width="64" />
-  <br />
-	  <br />
-  <a href="https://deepwiki.com/siddharthvaddem/openscreen">
-    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" />
-  </a>
 </p>
 
-# <p align="center">OpenScreen</p>
+# <p align="center">OpenScreen 中文版</p>
 
-<p align="center"><strong>OpenScreen is your free, open-source alternative to Screen Studio (sort of).</strong></p>
+<p align="center"><strong>免费开源的屏幕录制和视频编辑工具，Screen Studio 的开源替代品</strong></p>
 
-
-
-If you don't want to pay $29/month for Screen Studio but want a much simpler version that does what most people seem to need, making beautiful product demos and walkthroughs, here's a free-to-use app for you. OpenScreen does not offer all Screen Studio features, but covers the basics well!
-
-Screen Studio is an awesome product and this is definitely not a 1:1 clone. OpenScreen is a much simpler take, just the basics for folks who want control and don't want to pay. If you need all the fancy features, your best bet is to support Screen Studio (they really do a great job, haha). But if you just want something free (no gotchas) and open, this project does the job!
-
-OpenScreen is 100% free for personal and commercial use. Use it, modify it, distribute it. (Just be cool 😁 and give a shoutout if you feel like it !)
-
-
-
-**⚠️ DISCLAIMER: This is very much in beta and might be buggy here and there (but hope you have a good experience!).**
-
-</p>
 <p align="center">
-	<img src="preview.png" alt="OpenScreen App Preview" style="height: 320px; margin-right: 12px;" />
-	<img src="preview2.png" alt="OpenScreen App Preview 2" style="height: 320px; margin-right: 12px;" />
-	<img src="preview3.png" alt="OpenScreen App Preview 3" style="height: 320px; margin-right: 12px;" />
-	<img src="preview4.png" alt="OpenScreen App Preview 4" style="height: 320px; margin-right: 12px;" />
-	
+  🌟 本项目基于 <a href="https://github.com/siddharthvaddem/openscreen">siddharthvaddem/openscreen</a> 进行汉化和功能增强
 </p>
-</p>
-
-## Core Features
-- Record your whole screen or specific apps
-- Add manual zooms (customizable depth levels)
-- Customize the duration and position of zooms however you please
-- Crop video recordings to hide parts
-- Choose between wallpapers, solid colors, gradients or your own picture for your background
-- Motion blur for smoother pan and zoom effects
-- Add annotations (text, arrows, images)
-- Trim sections of the clip
-- Export in different aspect ratios and resolutions
-
-## Installation
-
-Download the latest installer for your platform from the [GitHub Releases](https://github.com/siddharthvaddem/openscreen/releases) page.
-
-### macOS
-
-If you encounter issues with macOS Gatekeeper blocking the app (since it does not come with a developer certificate), you can bypass this by running the following command in your terminal after installation:
-
-```bash
-xattr -rd com.apple.quarantine /Applications/Openscreen.app
-```
-
-After running this command, proceed to **System Preferences > Security & Privacy** to grant the necessary permissions for "screen recording" and "accessibility". Once permissions are granted, you can launch the app.
-
-### Linux
-
-Download the `.AppImage` file from the releases page. Make it executable and run:
-
-```bash
-chmod +x Openscreen-Linux-*.AppImage
-./Openscreen-Linux-*.AppImage
-```
-
-You may need to grant screen recording permissions depending on your desktop environment.
-
-## Built with
-- Electron
-- React
-- TypeScript
-- Vite
-- PixiJS
-- dnd-timeline
 
 ---
 
+## ✨ 新增功能
 
-_I'm new to open source, idk what I'm doing lol. If something is wrong please raise an issue 🙏_
+相比原版，中文版新增了以下功能：
 
-## Contributing
+- 🌐 **完整中文界面** - 所有 UI 元素已汉化
+- 🤖 **AI 智能缩放** - 集成 Gemini AI，自动分析视频内容生成缩放建议
+- 🖱️ **鼠标跟随缩放** - 录制时记录鼠标位置，播放时自动跟随鼠标缩放
+- 🎨 **AI 图片生成** - 使用 Gemini 生成注释图片
+- 🎤 **音频录制** - 支持系统音频、麦克风或同时录制
+- ⌨️ **中文输入法快捷键兼容** - 修复了中文输入法下快捷键无法使用的问题
 
-Contributions are welcome! If you’d like to help out or see what’s currently being worked on, take a look at the open issues and the [project roadmap](https://github.com/users/siddharthvaddem/projects/3) to understand the current direction of the project and find ways to contribute.
+## 📥 下载安装
 
+从 [Releases](https://github.com/yzz05220-rgb/openscreen-chinese/releases) 页面下载最新版本的安装包。
 
-## License
+### Windows
+下载 `OpenScreen-Chinese-x.x.x-Setup.exe`，双击安装即可。
 
+## 🛠️ 从源码构建
 
-This project is licensed under the [MIT License](./LICENSE). By using this software, you agree that the authors are not liable for any issues, damages, or claims arising from its use.
+```bash
+# 克隆仓库
+git clone https://github.com/yzz05220-rgb/openscreen-chinese.git
+cd openscreen-chinese
 
+# 安装依赖
+npm install
+
+# 开发模式运行
+npm run dev
+
+# 打包 Windows 版本
+npm run build:win
+```
+
+## 🎯 核心功能
+
+- 录制整个屏幕或特定应用窗口
+- 添加手动缩放（可自定义缩放深度）
+- 自定义缩放的持续时间和位置
+- 裁剪视频录制以隐藏部分内容
+- 选择壁纸、纯色、渐变或自定义图片作为背景
+- 运动模糊效果，使平移和缩放更流畅
+- 添加注释（文字、箭头、图片）
+- 修剪视频片段
+- 导出不同宽高比和分辨率
+
+## 🙏 致谢
+
+本项目基于 [OpenScreen](https://github.com/siddharthvaddem/openscreen) 开发，感谢原作者 [@siddharthvaddem](https://github.com/siddharthvaddem) 的开源贡献！
+
+## 📝 许可证
+
+本项目采用 [MIT License](./LICENSE) 开源许可证。

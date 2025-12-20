@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { useTimelineContext } from "dnd-timeline";
 import { Button } from "@/components/ui/button";
 import { Plus, Scissors, ZoomIn, MessageSquare, ChevronDown, Check } from "lucide-react";
@@ -510,6 +511,7 @@ export default function TimelineEditor({
   aspectRatio,
   onAspectRatioChange,
 }: TimelineEditorProps) {
+  const { t } = useTranslation();
   const totalMs = useMemo(() => Math.max(0, Math.round(videoDuration * 1000)), [videoDuration]);
   const currentTimeMs = useMemo(() => Math.round(currentTime * 1000), [currentTime]);
   const timelineScale = useMemo(() => calculateTimelineScale(videoDuration), [videoDuration]);
@@ -657,8 +659,8 @@ export default function TimelineEditor({
     // Check if playhead is inside any zoom region
     const isOverlapping = sorted.some(region => startPos >= region.startMs && startPos < region.endMs);
     if (isOverlapping || gapToNext <= 0) {
-      toast.error("Cannot place zoom here", {
-        description: "Zoom already exists at this location or not enough space available.",
+      toast.error(t('editor.cannotPlaceZoom'), {
+        description: t('editor.zoomExistsHere'),
       });
       return;
     }
@@ -687,8 +689,8 @@ export default function TimelineEditor({
     // Check if playhead is inside any trim region
     const isOverlapping = sorted.some(region => startPos >= region.startMs && startPos < region.endMs);
     if (isOverlapping || gapToNext <= 0) {
-      toast.error("Cannot place trim here", {
-        description: "Trim already exists at this location or not enough space available.",
+      toast.error(t('editor.cannotPlaceTrim'), {
+        description: t('editor.trimExistsHere'),
       });
       return;
     }
@@ -715,47 +717,52 @@ export default function TimelineEditor({
   }, [videoDuration, totalMs, currentTimeMs, onAnnotationAdded]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    // 使用 keyup 事件，因为中文输入法在 keydown 时可能会拦截
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // 跳过输入框
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
+      
+      // 跳过输入法组合状态
+      if (e.isComposing) {
+        return;
+      }
 
-      if (e.key === 'f' || e.key === 'F') {
+      // 使用 e.code 检测物理按键，不受输入法影响
+      if (e.code === 'KeyF') {
         addKeyframe();
       }
-      if (e.key === 'z' || e.key === 'Z') {
+      if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey) {
         handleAddZoom();
       }
-      if (e.key === 't' || e.key === 'T') {
+      if (e.code === 'KeyT') {
         handleAddTrim();
       }
-      if (e.key === 'a' || e.key === 'A') {
+      if (e.code === 'KeyA' && !e.ctrlKey && !e.metaKey) {
         handleAddAnnotation();
       }
       
       // Tab: Cycle through overlapping annotations at current time
-      if (e.key === 'Tab' && annotationRegions.length > 0) {
+      if (e.code === 'Tab' && annotationRegions.length > 0) {
         const currentTimeMs = Math.round(currentTime * 1000);
         const overlapping = annotationRegions
           .filter(a => currentTimeMs >= a.startMs && currentTimeMs <= a.endMs)
-          .sort((a, b) => a.zIndex - b.zIndex); // Sort by z-index
+          .sort((a, b) => a.zIndex - b.zIndex);
         
         if (overlapping.length > 0) {
-          e.preventDefault(); 
-          
           if (!selectedAnnotationId || !overlapping.some(a => a.id === selectedAnnotationId)) {
             onSelectAnnotation?.(overlapping[0].id);
           } else {
-            // Cycle to next annotation
             const currentIndex = overlapping.findIndex(a => a.id === selectedAnnotationId);
             const nextIndex = e.shiftKey 
-              ? (currentIndex - 1 + overlapping.length) % overlapping.length // Shift+Tab = backward
-              : (currentIndex + 1) % overlapping.length; // Tab = forward
+              ? (currentIndex - 1 + overlapping.length) % overlapping.length
+              : (currentIndex + 1) % overlapping.length;
             onSelectAnnotation?.(overlapping[nextIndex].id);
           }
         }
       }    
-      if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
+      if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) {
         if (selectedKeyframeId) {
           deleteSelectedKeyframe();
         } else if (selectedZoomId) {
@@ -767,8 +774,32 @@ export default function TimelineEditor({
         }
       }
     };
+    
+    // keydown 仅用于阻止默认行为
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (e.isComposing || e.keyCode === 229) {
+        return;
+      }
+      // 阻止这些按键的默认行为
+      if (['KeyF', 'KeyZ', 'KeyT', 'KeyA', 'Tab'].includes(e.code)) {
+        if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) return; // 允许 Ctrl+Z
+        if (e.code === 'KeyA' && (e.ctrlKey || e.metaKey)) return; // 允许 Ctrl+A
+        e.preventDefault();
+      }
+      if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [addKeyframe, handleAddZoom, handleAddTrim, handleAddAnnotation, deleteSelectedKeyframe, deleteSelectedZoom, deleteSelectedTrim, deleteSelectedAnnotation, selectedKeyframeId, selectedZoomId, selectedTrimId, selectedAnnotationId, annotationRegions, currentTime, onSelectAnnotation]);
 
   const clampedRange = useMemo<Range>(() => {

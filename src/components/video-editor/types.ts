@@ -1,5 +1,8 @@
 export type ZoomDepth = 1 | 2 | 3 | 4 | 5 | 6;
 
+// 缩放模式：跟随鼠标 或 固定位置
+export type ZoomMode = 'followMouse' | 'fixed';
+
 export interface ZoomFocus {
   cx: number; // normalized horizontal center (0-1)
   cy: number; // normalized vertical center (0-1)

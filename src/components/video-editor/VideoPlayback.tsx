@@ -2,7 +2,8 @@ import type React from "react";
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useMemo, useCallback } from "react";
 import { getAssetPath } from "@/lib/assetPath";
 import { Application, Container, Sprite, Graphics, BlurFilter, Texture, VideoSource } from 'pixi.js';
-import { ZOOM_DEPTH_SCALES, type ZoomRegion, type ZoomFocus, type ZoomDepth, type TrimRegion, type AnnotationRegion } from "./types";
+import { ZOOM_DEPTH_SCALES, type ZoomRegion, type ZoomFocus, type ZoomDepth, type TrimRegion, type AnnotationRegion, type ZoomMode } from "./types";
+import { type MouseData, getMousePositionAtTime } from "@/lib/mouseTracker";
 import { DEFAULT_FOCUS, SMOOTHING_FACTOR, MIN_DELTA } from "./videoPlayback/constants";
 import { clamp01 } from "./videoPlayback/mathUtils";
 import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
@@ -41,6 +42,8 @@ interface VideoPlaybackProps {
   onSelectAnnotation?: (id: string | null) => void;
   onAnnotationPositionChange?: (id: string, position: { x: number; y: number }) => void;
   onAnnotationSizeChange?: (id: string, size: { width: number; height: number }) => void;
+  zoomMode?: ZoomMode;
+  mouseData?: MouseData | null;
 }
 
 export interface VideoPlaybackRef {
@@ -80,6 +83,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   onSelectAnnotation,
   onAnnotationPositionChange,
   onAnnotationSizeChange,
+  zoomMode = 'followMouse',
+  mouseData = null,
 }, ref) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -113,6 +118,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   const trimRegionsRef = useRef<TrimRegion[]>([]);
   const motionBlurEnabledRef = useRef(motionBlurEnabled);
   const videoReadyRafRef = useRef<number | null>(null);
+  
+  // 缩放模式
+  const zoomModeRef = useRef(zoomMode);
+  // 录制的鼠标数据
+  const mouseDataRef = useRef<MouseData | null>(mouseData);
 
   const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
     return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -303,6 +313,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
     endFocusDrag(event);
   };
 
+
+
   useEffect(() => {
     zoomRegionsRef.current = zoomRegions;
   }, [zoomRegions]);
@@ -322,6 +334,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   useEffect(() => {
     motionBlurEnabledRef.current = motionBlurEnabled;
   }, [motionBlurEnabled]);
+
+  useEffect(() => {
+    zoomModeRef.current = zoomMode;
+  }, [zoomMode]);
+
+  // 同步录制的鼠标数据
+  useEffect(() => {
+    mouseDataRef.current = mouseData;
+  }, [mouseData]);
 
   useEffect(() => {
     if (!pixiReady || !videoReady) return;
@@ -642,11 +663,50 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
         const zoomScale = ZOOM_DEPTH_SCALES[region.depth];
         const regionFocus = clampFocusToStage(region.focus, region.depth);
         
+        let effectiveFocus: ZoomFocus;
+        
+        // 根据缩放模式决定焦点行为
+        if (zoomModeRef.current === 'followMouse') {
+          // 跟随鼠标模式：使用录制时的鼠标位置数据
+          const mouseData = mouseDataRef.current;
+          const video = videoRef.current;
+          
+          let mousePos: { cx: number; cy: number } | null = null;
+          
+          if (mouseData && mouseData.positions.length > 0 && video) {
+            // 获取当前视频时间对应的鼠标位置
+            const currentTimeMs = currentTimeRef.current * 1000;
+            const videoWidth = video.videoWidth || 1920;
+            const videoHeight = video.videoHeight || 1080;
+            
+            mousePos = getMousePositionAtTime(mouseData, currentTimeMs, videoWidth, videoHeight);
+          }
+          
+          if (mousePos) {
+            // 使用录制的鼠标位置
+            // 计算缩放后的可视窗口大小（相对于整体）
+            const viewportRatio = 1 / zoomScale;
+            const halfViewport = viewportRatio / 2;
+            
+            // 将鼠标位置限制在有效范围内，防止画面超出边界
+            effectiveFocus = {
+              cx: Math.max(halfViewport, Math.min(1 - halfViewport, mousePos.cx)),
+              cy: Math.max(halfViewport, Math.min(1 - halfViewport, mousePos.cy)),
+            };
+          } else {
+            // 没有鼠标数据时，回退到固定位置模式
+            effectiveFocus = regionFocus;
+          }
+        } else {
+          // 固定位置模式：完全使用原始逻辑，不做任何改动
+          effectiveFocus = regionFocus;
+        }
+        
         // Interpolate scale and focus based on region strength
         targetScaleFactor = 1 + (zoomScale - 1) * strength;
         targetFocus = {
-          cx: defaultFocus.cx + (regionFocus.cx - defaultFocus.cx) * strength,
-          cy: defaultFocus.cy + (regionFocus.cy - defaultFocus.cy) * strength,
+          cx: defaultFocus.cx + (effectiveFocus.cx - defaultFocus.cx) * strength,
+          cy: defaultFocus.cy + (effectiveFocus.cy - defaultFocus.cy) * strength,
         };
       }
 
@@ -789,7 +849,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
     : { background: resolvedWallpaper || '' };
 
   return (
-    <div className="relative rounded-sm overflow-hidden" style={{ width: '100%', aspectRatio: formatAspectRatioForCSS(aspectRatio) }}>
+    <div 
+      className="relative rounded-sm overflow-hidden" 
+      style={{ width: '100%', aspectRatio: formatAspectRatioForCSS(aspectRatio) }}
+    >
       {/* Background layer - always render as DOM element with blur */}
       <div
         className="absolute inset-0 bg-cover bg-center"

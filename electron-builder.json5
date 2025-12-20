@@ -1,14 +1,15 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.siddharthvaddem.openscreen",
-  "asar": true,
-  "productName": "Openscreen",
+  "appId": "com.openscreen.chinese",
+  "asar": false,
+  "productName": "OpenScreen 中文版",
+  "copyright": "Copyright © 2024 OpenScreen",
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
-  "compression": "maximum",
+  "compression": "normal",
   "directories": {
-    "output": "release/${version}"
+    "output": "dist-release"
   },
   "files": [
     "dist",
@@ -47,8 +48,31 @@
   },
   "win": {
     "target": [
-      "nsis"
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
     ],
-    "icon": "icons/icons/win/icon.ico"
+    "icon": "icons/icons/win/icon.ico",
+    "artifactName": "OpenScreen-Chinese-${version}-Setup.${ext}",
+    "signAndEditExecutable": false,
+    "legalTrademarks": "OpenScreen",
+    "publisherName": "OpenScreen",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "icons/icons/win/icon.ico",
+    "uninstallerIcon": "icons/icons/win/icon.ico",
+    "installerHeaderIcon": "icons/icons/win/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "OpenScreen 中文版"
+  },
+  "portable": {
+    "artifactName": "OpenScreen-Chinese-${version}-Portable.exe"
   }
 }

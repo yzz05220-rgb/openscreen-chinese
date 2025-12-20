@@ -1,6 +1,7 @@
 
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -27,15 +28,18 @@ import {
   type AnnotationRegion,
   type CropRegion,
   type FigureData,
+  type ZoomMode,
 } from "./types";
 import { VideoExporter, type ExportProgress, type ExportQuality } from "@/lib/exporter";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { getAssetPath } from "@/lib/assetPath";
+import { loadMouseData, type MouseData } from "@/lib/mouseTracker";
 
 const WALLPAPER_COUNT = 18;
 const WALLPAPER_PATHS = Array.from({ length: WALLPAPER_COUNT }, (_, i) => `/wallpapers/wallpaper${i + 1}.jpg`);
 
 export default function VideoEditor() {
+  const { t } = useTranslation();
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +65,8 @@ export default function VideoEditor() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [exportQuality, setExportQuality] = useState<ExportQuality>('good');
+  const [zoomMode, setZoomMode] = useState<ZoomMode>('followMouse');
+  const [mouseData, setMouseData] = useState<MouseData | null>(null);
 
   const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
   const nextZoomIdRef = useRef(1);
@@ -93,6 +99,13 @@ export default function VideoEditor() {
         if (result.success && result.path) {
           const videoUrl = toFileUrl(result.path);
           setVideoPath(videoUrl);
+          
+          // 尝试加载鼠标位置数据
+          const mouseDataResult = await loadMouseData(result.path);
+          if (mouseDataResult) {
+            setMouseData(mouseDataResult);
+            console.log(`Loaded mouse data: ${mouseDataResult.positions.length} positions`);
+          }
         } else {
           setError('No video to load. Please record or select a video.');
         }
@@ -252,6 +265,11 @@ export default function VideoEditor() {
     }
   }, [selectedZoomId]);
 
+  // 处理智能缩放生成的区域
+  const handleSmartZoomsGenerated = useCallback((regions: ZoomRegion[]) => {
+    setZoomRegions((prev) => [...prev, ...regions]);
+  }, []);
+
   const handleTrimDelete = useCallback((id: string) => {
     setTrimRegions((prev) => prev.filter((region) => region.id !== id));
     if (selectedTrimId === id) {
@@ -383,24 +401,18 @@ export default function VideoEditor() {
     );
   }, []);
   
-  // Global Tab prevention
+  // Global keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        // Allow tab only in inputs/textareas
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-          return;
-        }
-        e.preventDefault();
+    // 使用 keyup 处理空格键播放/暂停，避免中文输入法干扰
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (e.isComposing) {
+        return;
       }
 
-      if (e.key === ' ' || e.code === 'Space') {
-        // Allow space only in inputs/textareas
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-          return;
-        }
-        e.preventDefault();
-        
+      if (e.code === 'Space') {
         const playback = videoPlaybackRef.current;
         if (playback?.video) {
           if (playback.video.paused) {
@@ -412,8 +424,29 @@ export default function VideoEditor() {
       }
     };
     
+    // keydown 用于阻止默认行为
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (e.isComposing || e.keyCode === 229) {
+        return;
+      }
+      
+      if (e.code === 'Tab') {
+        e.preventDefault();
+      }
+      if (e.code === 'Space') {
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
   }, []);
 
   useEffect(() => {
@@ -436,13 +469,13 @@ export default function VideoEditor() {
 
   const handleExport = useCallback(async () => {
     if (!videoPath) {
-      toast.error('No video loaded');
+      toast.error(t('editor.noVideoLoaded'));
       return;
     }
 
     const video = videoPlaybackRef.current?.video;
     if (!video) {
-      toast.error('Video not ready');
+      toast.error(t('editor.videoNotReady'));
       return;
     }
 
@@ -460,7 +493,7 @@ export default function VideoEditor() {
       // Get actual video dimensions to match recording resolution
       const video = videoPlaybackRef.current?.video;
       if (!video) {
-        toast.error('Video not ready');
+        toast.error(t('editor.videoNotReady'));
         return;
       }
       
@@ -590,16 +623,16 @@ export default function VideoEditor() {
         const saveResult = await window.electronAPI.saveExportedVideo(arrayBuffer, fileName);
         
         if (saveResult.cancelled) {
-          toast.info('Export cancelled');
+          toast.info(t('editor.exportCancelled'));
         } else if (saveResult.success) {
-          toast.success(`Video exported successfully to ${saveResult.path}`);
+          toast.success(t('editor.exportSuccess'));
         } else {
-          setExportError(saveResult.message || 'Failed to save video');
-          toast.error(saveResult.message || 'Failed to save video');
+          setExportError(saveResult.message || t('editor.failedToSave'));
+          toast.error(saveResult.message || t('editor.failedToSave'));
         }
       } else {
-        setExportError(result.error || 'Export failed');
-        toast.error(result.error || 'Export failed');
+        setExportError(result.error || t('editor.exportFailed'));
+        toast.error(result.error || t('editor.exportFailed'));
       }
 
       if (wasPlaying) {
@@ -607,9 +640,9 @@ export default function VideoEditor() {
       }
     } catch (error) {
       console.error('Export error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : t('editor.exportFailed');
       setExportError(errorMessage);
-      toast.error(`Export failed: ${errorMessage}`);
+      toast.error(`${t('editor.exportFailed')}: ${errorMessage}`);
     } finally {
       setIsExporting(false);
       exporterRef.current = null;
@@ -619,13 +652,13 @@ export default function VideoEditor() {
   const handleCancelExport = useCallback(() => {
     if (exporterRef.current) {
       exporterRef.current.cancel();
-      toast.info('Export cancelled');
+      toast.info(t('editor.exportCancelled'));
       setShowExportDialog(false);
       setIsExporting(false);
       setExportProgress(null);
       setExportError(null);
     }
-  }, []);
+  }, [t]);
 
   if (loading) {
     return (
@@ -652,9 +685,9 @@ export default function VideoEditor() {
         <div className="flex-1" />
       </div>
 
-      <div className="flex-1 p-5 gap-4 flex min-h-0 relative">
+      <div className="flex-1 p-5 gap-4 flex min-h-0 relative overflow-hidden">
         {/* Left Column - Video & Timeline */}
-        <div className="flex-[7] flex flex-col gap-3 min-w-0 h-full">
+        <div className="flex-[7] flex flex-col gap-3 min-w-0 h-full overflow-hidden">
           <PanelGroup direction="vertical" className="gap-3">
             {/* Top section: video preview and controls */}
             <Panel defaultSize={70} minSize={40}>
@@ -690,6 +723,8 @@ export default function VideoEditor() {
                       onSelectAnnotation={handleSelectAnnotation}
                       onAnnotationPositionChange={handleAnnotationPositionChange}
                       onAnnotationSizeChange={handleAnnotationSizeChange}
+                      zoomMode={zoomMode}
+                      mouseData={mouseData}
                     />
                   </div>
                 </div>
@@ -745,8 +780,9 @@ export default function VideoEditor() {
           </PanelGroup>
         </div>
 
-          {/* Right section: settings panel */}
-          <SettingsPanel
+          {/* Right section: settings panel - 允许滚动 */}
+          <div className="w-[300px] flex-shrink-0 h-full overflow-y-auto">
+            <SettingsPanel
           selected={wallpaper}
           onWallpaperChange={setWallpaper}
           selectedZoomDepth={selectedZoomId ? zoomRegions.find(z => z.id === selectedZoomId)?.depth : null}
@@ -769,6 +805,7 @@ export default function VideoEditor() {
           onCropChange={setCropRegion}
           aspectRatio={aspectRatio}
           videoElement={videoPlaybackRef.current?.video || null}
+          videoDuration={duration}
           exportQuality={exportQuality}
           onExportQualityChange={setExportQuality}
           onExport={handleExport}
@@ -779,7 +816,11 @@ export default function VideoEditor() {
           onAnnotationStyleChange={handleAnnotationStyleChange}
           onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
           onAnnotationDelete={handleAnnotationDelete}
+          onSmartZoomsGenerated={handleSmartZoomsGenerated}
+          zoomMode={zoomMode}
+          onZoomModeChange={setZoomMode}
         />
+          </div>
       </div>
 
       <Toaster theme="dark" className="pointer-events-auto" />

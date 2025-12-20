@@ -1,17 +1,29 @@
 import { useState, useRef, useEffect } from "react";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 
+// 音频录制模式
+export type AudioMode = 'none' | 'system' | 'mic' | 'both';
+
 type UseScreenRecorderReturn = {
   recording: boolean;
   toggleRecording: () => void;
+  audioMode: AudioMode;
+  setAudioMode: (mode: AudioMode) => void;
 };
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
   const [recording, setRecording] = useState(false);
+  const [audioMode, setAudioMode] = useState<AudioMode>('none');
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
   const startTime = useRef<number>(0);
+  const audioModeRef = useRef(audioMode);
+
+  // 同步 audioMode 状态到 ref
+  useEffect(() => {
+    audioModeRef.current = audioMode;
+  }, [audioMode]);
 
   // Target visually lossless 4K @ 60fps; fall back gracefully when hardware cannot keep up
   const TARGET_FRAME_RATE = 60;
@@ -87,8 +99,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         return;
       }
 
-      const mediaStream = await (navigator.mediaDevices as any).getUserMedia({
-        audio: false,
+      const currentAudioMode = audioModeRef.current;
+      console.log('Audio mode:', currentAudioMode);
+      
+      // 获取屏幕视频流（可能包含系统音频）
+      const needsSystemAudio = currentAudioMode === 'system' || currentAudioMode === 'both';
+      console.log('Needs system audio:', needsSystemAudio);
+      
+      const videoStream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: needsSystemAudio ? {
+          mandatory: {
+            chromeMediaSource: "desktop",
+          },
+        } : false,
         video: {
           mandatory: {
             chromeMediaSource: "desktop",
@@ -100,7 +123,74 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
           },
         },
       });
-      stream.current = mediaStream;
+
+      // 收集所有轨道
+      const tracks: MediaStreamTrack[] = [...videoStream.getVideoTracks()];
+      console.log('Video tracks:', videoStream.getVideoTracks().length);
+      console.log('System audio tracks from desktop:', videoStream.getAudioTracks().length);
+      
+      // 添加系统音频轨道
+      if (needsSystemAudio) {
+        const systemAudioTracks = videoStream.getAudioTracks();
+        if (systemAudioTracks.length > 0) {
+          tracks.push(...systemAudioTracks);
+          console.log('Added system audio tracks');
+        } else {
+          console.warn('No system audio tracks available from desktop capture');
+        }
+      }
+
+      // 获取麦克风音频
+      const needsMicAudio = currentAudioMode === 'mic' || currentAudioMode === 'both';
+      console.log('Needs mic audio:', needsMicAudio);
+      
+      if (needsMicAudio) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+            video: false,
+          });
+          const micTracks = micStream.getAudioTracks();
+          console.log('Mic audio tracks:', micTracks.length);
+          tracks.push(...micTracks);
+        } catch (micError) {
+          console.warn('无法获取麦克风音频:', micError);
+        }
+      }
+
+      console.log('Total tracks:', tracks.length, '(video:', tracks.filter(t => t.kind === 'video').length, ', audio:', tracks.filter(t => t.kind === 'audio').length, ')');
+
+      // 如果有多个音频轨道，需要混合它们
+      const audioTracks = tracks.filter(t => t.kind === 'audio');
+      const videoTracks = tracks.filter(t => t.kind === 'video');
+      
+      let finalStream: MediaStream;
+      
+      if (audioTracks.length > 1) {
+        // 使用 AudioContext 混合多个音频轨道
+        console.log('Mixing', audioTracks.length, 'audio tracks');
+        const audioContext = new AudioContext();
+        const destination = audioContext.createMediaStreamDestination();
+        
+        audioTracks.forEach((track, index) => {
+          const source = audioContext.createMediaStreamSource(new MediaStream([track]));
+          source.connect(destination);
+          console.log(`Connected audio track ${index + 1}`);
+        });
+        
+        // 创建最终的流：视频轨道 + 混合后的音频轨道
+        finalStream = new MediaStream([
+          ...videoTracks,
+          ...destination.stream.getAudioTracks()
+        ]);
+      } else {
+        finalStream = new MediaStream(tracks);
+      }
+
+      stream.current = finalStream;
       if (!stream.current) {
         throw new Error("Media stream is not available.");
       }
@@ -187,5 +277,5 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     recording ? stopRecording.current() : startRecording();
   };
 
-  return { recording, toggleRecording };
+  return { recording, toggleRecording, audioMode, setAudioMode };
 }

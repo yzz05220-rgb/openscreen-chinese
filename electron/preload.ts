@@ -63,4 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => {
     return ipcRenderer.invoke('get-platform')
   },
+  getMouseData: (videoPath: string) => {
+    return ipcRenderer.invoke('get-mouse-data', videoPath)
+  },
 })

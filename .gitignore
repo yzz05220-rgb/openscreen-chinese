@@ -23,5 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 release/**
+dist-release/**
+dist-electron/**
 
 # npx electron-builder --mac --win

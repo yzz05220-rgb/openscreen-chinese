@@ -15,6 +15,17 @@ export function computeRegionStrength(region: ZoomRegion, timeMs: number) {
   return Math.min(fadeIn, fadeOut);
 }
 
+// 计算缩放进入阶段的进度（0-1），用于鼠标扩散效果
+export function computeZoomInProgress(region: ZoomRegion, timeMs: number): number {
+  const leadInStart = region.startMs - TRANSITION_WINDOW_MS;
+  const leadInEnd = region.startMs;
+  
+  if (timeMs < leadInStart) return 0;
+  if (timeMs >= leadInEnd) return 1;
+  
+  return smoothStep((timeMs - leadInStart) / TRANSITION_WINDOW_MS);
+}
+
 export function findDominantRegion(regions: ZoomRegion[], timeMs: number) {
   let bestRegion: ZoomRegion | null = null;
   let bestStrength = 0;
@@ -27,5 +38,8 @@ export function findDominantRegion(regions: ZoomRegion[], timeMs: number) {
     }
   }
 
-  return { region: bestRegion, strength: bestStrength };
+  // 计算缩放进入进度
+  const zoomInProgress = bestRegion ? computeZoomInProgress(bestRegion, timeMs) : 0;
+
+  return { region: bestRegion, strength: bestStrength, zoomInProgress };
 }

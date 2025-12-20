@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useTranslation } from 'react-i18next';
 import styles from "./LaunchWindow.module.css";
-import { useScreenRecorder } from "../../hooks/useScreenRecorder";
+import { useScreenRecorder, type AudioMode } from "../../hooks/useScreenRecorder";
 import { Button } from "../ui/button";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
@@ -8,10 +9,14 @@ import { MdMonitor } from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { FaFolderMinus } from "react-icons/fa6";
 import { FiMinus, FiX } from "react-icons/fi";
+import { HiMiniSpeakerWave, HiMiniSpeakerXMark, HiMiniMicrophone } from "react-icons/hi2";
 import { ContentClamp } from "../ui/content-clamp";
 
 export function LaunchWindow() {
-  const { recording, toggleRecording } = useScreenRecorder();
+  const { t } = useTranslation();
+  const { recording, toggleRecording, audioMode, setAudioMode } = useScreenRecorder();
+  const [showAudioOptions, setShowAudioOptions] = useState(false);
+  const audioRef = useRef<HTMLDivElement>(null);
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
@@ -39,7 +44,7 @@ export function LaunchWindow() {
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
-  const [selectedSource, setSelectedSource] = useState("Screen");
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [hasSelectedSource, setHasSelectedSource] = useState(false);
 
   useEffect(() => {
@@ -50,7 +55,7 @@ export function LaunchWindow() {
           setSelectedSource(source.name);
           setHasSelectedSource(true);
         } else {
-          setSelectedSource("Screen");
+          setSelectedSource(null);
           setHasSelectedSource(false);
         }
       }
@@ -93,8 +98,45 @@ export function LaunchWindow() {
     }
   };
 
+  // 获取音频模式图标
+  const getAudioIcon = (mode: AudioMode) => {
+    switch (mode) {
+      case 'system':
+        return <HiMiniSpeakerWave size={14} />;
+      case 'mic':
+        return <HiMiniMicrophone size={14} />;
+      case 'both':
+        return (
+          <div className="flex items-center -space-x-1">
+            <HiMiniSpeakerWave size={12} />
+            <HiMiniMicrophone size={12} />
+          </div>
+        );
+      default:
+        return <HiMiniSpeakerXMark size={14} />;
+    }
+  };
+
+  // 获取当前选中模式的标签
+  const getAudioLabel = () => {
+    return t(`recording.audio_${audioMode}_short`);
+  };
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (audioRef.current && !audioRef.current.contains(e.target as Node)) {
+        setShowAudioOptions(false);
+      }
+    };
+    if (showAudioOptions) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAudioOptions]);
+
   return (
-    <div className="w-full h-full flex items-center bg-transparent">
+    <div className="w-full h-full flex items-end bg-transparent pb-2">
       <div
         className={`w-full max-w-[500px] mx-auto flex items-center justify-between px-4 py-2 ${styles.electronDrag}`}
         style={{
@@ -117,8 +159,62 @@ export function LaunchWindow() {
           disabled={recording}
         >
           <MdMonitor size={14} className="text-white" />
-          <ContentClamp truncateLength={6}>{selectedSource}</ContentClamp>
+          <ContentClamp truncateLength={6}>{selectedSource || t('common.screen')}</ContentClamp>
         </Button>
+
+        <div className="w-px h-6 bg-white/30" />
+
+        {/* 音频选项 */}
+        <div className="relative flex-1" ref={audioRef}>
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() => !recording && setShowAudioOptions(!showAudioOptions)}
+            disabled={recording}
+            className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 w-full text-left text-xs ${styles.electronNoDrag}`}
+          >
+            <span className={audioMode !== 'none' ? "text-[#34B27B]" : "text-white"}>
+              {getAudioIcon(audioMode)}
+            </span>
+            <span className={audioMode !== 'none' ? "text-[#34B27B]" : "text-white"}>
+              {getAudioLabel()}
+            </span>
+          </Button>
+          
+          {/* 下拉选项 - 向下弹出 */}
+          {showAudioOptions && (
+            <div 
+              className={`absolute left-1/2 -translate-x-1/2 top-full mt-3 rounded-xl overflow-hidden ${styles.electronNoDrag}`}
+              style={{
+                background: 'linear-gradient(135deg, rgba(30,30,40,0.95) 0%, rgba(20,20,30,0.92) 100%)',
+                backdropFilter: 'blur(32px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(32px) saturate(180%)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.2) inset',
+                border: '1px solid rgba(80,80,120,0.22)',
+                minWidth: '120px',
+                zIndex: 9999,
+              }}
+            >
+              {(['none', 'system', 'mic', 'both'] as AudioMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setAudioMode(mode);
+                    setShowAudioOptions(false);
+                  }}
+                  className={`w-full px-4 py-2.5 flex items-center gap-2 text-xs transition-colors ${
+                    audioMode === mode 
+                      ? 'text-[#34B27B] bg-[#34B27B]/10' 
+                      : 'text-white/80 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  {getAudioIcon(mode)}
+                  <span>{t(`recording.audio_${mode}_short`)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="w-px h-6 bg-white/30" />
 
@@ -137,7 +233,7 @@ export function LaunchWindow() {
           ) : (
             <>
               <BsRecordCircle size={14} className={hasSelectedSource ? "text-white" : "text-white/50"} />
-              <span className={hasSelectedSource ? "text-white" : "text-white/50"}>Record</span>
+              <span className={hasSelectedSource ? "text-white" : "text-white/50"}>{t('recording.record')}</span>
             </>
           )}
         </Button>
@@ -154,7 +250,7 @@ export function LaunchWindow() {
           disabled={recording}
         >
           <FaFolderMinus size={14} className="text-white" />
-          <span className={styles.folderText}>Open</span>
+          <span className={styles.folderText}>{t('common.open')}</span>
         </Button>
 
          {/* Separator before hide/close buttons */}

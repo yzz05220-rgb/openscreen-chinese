@@ -21,6 +21,103 @@ async function ensureRecordingsDir() {
   }
 }
 
+// 创建中文菜单栏
+function createApplicationMenu() {
+  const isMac = process.platform === 'darwin'
+  
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // macOS 应用菜单
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const, label: '关于 OpenScreen' },
+        { type: 'separator' as const },
+        { role: 'services' as const, label: '服务' },
+        { type: 'separator' as const },
+        { role: 'hide' as const, label: '隐藏 OpenScreen' },
+        { role: 'hideOthers' as const, label: '隐藏其他' },
+        { role: 'unhide' as const, label: '显示全部' },
+        { type: 'separator' as const },
+        { role: 'quit' as const, label: '退出 OpenScreen' }
+      ]
+    }] : []),
+    // 文件菜单
+    {
+      label: '文件',
+      submenu: [
+        isMac ? { role: 'close' as const, label: '关闭' } : { role: 'quit' as const, label: '退出' }
+      ]
+    },
+    // 编辑菜单
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo' as const, label: '撤销' },
+        { role: 'redo' as const, label: '重做' },
+        { type: 'separator' as const },
+        { role: 'cut' as const, label: '剪切' },
+        { role: 'copy' as const, label: '复制' },
+        { role: 'paste' as const, label: '粘贴' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' as const, label: '粘贴并匹配样式' },
+          { role: 'delete' as const, label: '删除' },
+          { role: 'selectAll' as const, label: '全选' }
+        ] : [
+          { role: 'delete' as const, label: '删除' },
+          { type: 'separator' as const },
+          { role: 'selectAll' as const, label: '全选' }
+        ])
+      ]
+    },
+    // 视图菜单
+    {
+      label: '视图',
+      submenu: [
+        { role: 'reload' as const, label: '重新加载' },
+        { role: 'forceReload' as const, label: '强制重新加载' },
+        { role: 'toggleDevTools' as const, label: '开发者工具' },
+        { type: 'separator' as const },
+        { role: 'resetZoom' as const, label: '重置缩放' },
+        { role: 'zoomIn' as const, label: '放大' },
+        { role: 'zoomOut' as const, label: '缩小' },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const, label: '全屏' }
+      ]
+    },
+    // 窗口菜单
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize' as const, label: '最小化' },
+        { role: 'zoom' as const, label: '缩放' },
+        ...(isMac ? [
+          { type: 'separator' as const },
+          { role: 'front' as const, label: '前置全部窗口' }
+        ] : [
+          { role: 'close' as const, label: '关闭' }
+        ])
+      ]
+    },
+    // 帮助菜单
+    {
+      label: '帮助',
+      role: 'help' as const,
+      submenu: [
+        {
+          label: '了解更多',
+          click: async () => {
+            const { shell } = await import('electron')
+            await shell.openExternal('https://github.com/siddharthvaddem/openscreen')
+          }
+        }
+      ]
+    }
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 // The built directory structure
 //
 // ├─┬─┬ dist
@@ -69,11 +166,11 @@ function getTrayIcon(filename: string) {
 function updateTrayMenu(recording: boolean = false) {
   if (!tray) return;
   const trayIcon = recording ? recordingTrayIcon : defaultTrayIcon;
-  const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "OpenScreen";
+  const trayToolTip = recording ? `正在录制: ${selectedSourceName}` : "OpenScreen";
   const menuTemplate = recording
     ? [
         {
-          label: "Stop Recording",
+          label: "停止录制",
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send("stop-recording-from-tray");
@@ -83,7 +180,7 @@ function updateTrayMenu(recording: boolean = false) {
       ]
     : [
         {
-          label: "Open",
+          label: "打开",
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.isMinimized() && mainWindow.restore();
@@ -93,7 +190,7 @@ function updateTrayMenu(recording: boolean = false) {
           },
         },
         {
-          label: "Quit",
+          label: "退出",
           click: () => {
             app.quit();
           },
@@ -138,6 +235,9 @@ app.on('activate', () => {
 
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
+    // 创建中文菜单栏
+    createApplicationMenu()
+    
     // Listen for HUD overlay quit event (macOS only)
     const { ipcMain } = await import('electron');
     ipcMain.on('hud-overlay-close', () => {
