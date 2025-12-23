@@ -11,6 +11,9 @@ interface ProcessedDesktopSource {
 
 interface Window {
   electronAPI: {
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => void
+    }
     getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>
     switchToEditor: () => Promise<void>
     openSourceSelector: () => Promise<void>
@@ -31,6 +34,11 @@ interface Window {
     getAssetBasePath: () => Promise<string | null>
     setRecordingState: (recording: boolean) => Promise<void>
     onStopRecordingFromTray: (callback: () => void) => () => void
+    onPauseRecordingFromTray: (callback: () => void) => () => void
+    onGlobalShortcut: (callback: (action: string) => void) => () => void
+    getShortcutSettings: () => Promise<{ stopRecording: string; pauseRecording: string }>
+    setShortcutSettings: (settings: { stopRecording: string; pauseRecording: string }) => Promise<{ success: boolean }>
+    setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => void
     openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>
     saveExportedVideo: (videoData: ArrayBuffer, fileName: string) => Promise<{
       success: boolean

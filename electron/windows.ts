@@ -17,24 +17,31 @@ ipcMain.on('hud-overlay-hide', () => {
   }
 });
 
+// 设置点击穿透（让透明区域可以点击到下面的内容）
+ipcMain.on('set-ignore-mouse-events', (_event, ignore: boolean, options?: { forward: boolean }) => {
+  if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
+    hudOverlayWindow.setIgnoreMouseEvents(ignore, options);
+  }
+});
+
 export function createHudOverlayWindow(): BrowserWindow {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { workArea } = primaryDisplay;
 
-
+  // 缩小窗口高度，只保留工具栏需要的高度
   const windowWidth = 500;
-  const windowHeight = 280;
+  const windowHeight = 60;  // 从 280 改为 60，只保留工具栏高度
 
   const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
-  const y = Math.floor(workArea.y + workArea.height - windowHeight - 5);
+  const y = Math.floor(workArea.y + workArea.height - windowHeight - 10);
 
   const win = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
     minWidth: 500,
     maxWidth: 500,
-    minHeight: 280,
-    maxHeight: 280,
+    minHeight: 60,
+    maxHeight: 60,
     x: x,
     y: y,
     frame: false,

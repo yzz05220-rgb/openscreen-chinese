@@ -14,6 +14,9 @@ export default function App() {
       document.body.style.background = 'transparent';
       document.documentElement.style.background = 'transparent';
       document.getElementById('root')?.style.setProperty('background', 'transparent');
+      // 隐藏滚动条
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
     }
   }, []);
 

@@ -1,5 +1,4 @@
 import { ipcMain, desktopCapturer, BrowserWindow, shell, app, dialog, screen } from 'electron'
-
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { RECORDINGS_DIR } from '../main'
@@ -119,6 +118,16 @@ export function registerIpcHandlers(
     const source = selectedSource || { name: 'Screen' }
     if (onRecordingStateChange) {
       onRecordingStateChange(recording, source.name)
+    }
+    
+    // 录屏开始时隐藏窗口，停止时恢复
+    const mainWin = getMainWindow()
+    if (mainWin && !mainWin.isDestroyed()) {
+      if (recording) {
+        // 录屏开始，隐藏窗口到系统托盘
+        mainWin.hide()
+      }
+      // 注意：停止录制后窗口会在 onRecordingStateChange 回调中恢复
     }
     
     // 鼠标位置追踪

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -10,6 +10,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export const RECORDINGS_DIR = path.join(app.getPath('userData'), 'recordings')
 
+// 快捷键设置
+interface ShortcutSettings {
+  stopRecording: string;
+  pauseRecording: string;
+}
+
+const DEFAULT_SHORTCUTS: ShortcutSettings = {
+  stopRecording: 'CommandOrControl+Shift+S',
+  pauseRecording: 'CommandOrControl+Shift+P'
+};
+
+let currentShortcuts: ShortcutSettings = { ...DEFAULT_SHORTCUTS };
+let isRecording = false;
+
 
 async function ensureRecordingsDir() {
   try {
@@ -18,6 +32,64 @@ async function ensureRecordingsDir() {
     console.log('User Data Path:', app.getPath('userData'))
   } catch (error) {
     console.error('Failed to create recordings directory:', error)
+  }
+}
+
+// 加载快捷键设置
+async function loadShortcutSettings(): Promise<ShortcutSettings> {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'shortcut-settings.json');
+    const data = await fs.readFile(settingsPath, 'utf-8');
+    const settings = JSON.parse(data);
+    return { ...DEFAULT_SHORTCUTS, ...settings };
+  } catch {
+    return { ...DEFAULT_SHORTCUTS };
+  }
+}
+
+// 保存快捷键设置
+async function saveShortcutSettings(settings: ShortcutSettings): Promise<void> {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'shortcut-settings.json');
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+  } catch (error) {
+    console.error('Failed to save shortcut settings:', error);
+  }
+}
+
+// 注册全局快捷键
+function registerGlobalShortcuts() {
+  // 先注销所有快捷键
+  globalShortcut.unregisterAll();
+  
+  // 注册停止录制快捷键
+  if (currentShortcuts.stopRecording) {
+    try {
+      globalShortcut.register(currentShortcuts.stopRecording, () => {
+        if (isRecording && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('global-shortcut', 'stop');
+          mainWindow.webContents.send('stop-recording-from-tray');
+        }
+      });
+      console.log(`Registered stop shortcut: ${currentShortcuts.stopRecording}`);
+    } catch (error) {
+      console.error('Failed to register stop shortcut:', error);
+    }
+  }
+  
+  // 注册暂停录制快捷键
+  if (currentShortcuts.pauseRecording) {
+    try {
+      globalShortcut.register(currentShortcuts.pauseRecording, () => {
+        if (isRecording && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('global-shortcut', 'pause');
+          mainWindow.webContents.send('pause-recording-from-tray');
+        }
+      });
+      console.log(`Registered pause shortcut: ${currentShortcuts.pauseRecording}`);
+    } catch (error) {
+      console.error('Failed to register pause shortcut:', error);
+    }
   }
 }
 
@@ -238,15 +310,55 @@ app.whenReady().then(async () => {
     // 创建中文菜单栏
     createApplicationMenu()
     
+    // 加载快捷键设置
+    currentShortcuts = await loadShortcutSettings();
+    
     // Listen for HUD overlay quit event (macOS only)
-    const { ipcMain } = await import('electron');
+    const { ipcMain, session } = await import('electron');
     ipcMain.on('hud-overlay-close', () => {
       app.quit();
     });
+    
+    // 快捷键设置 IPC
+    ipcMain.handle('get-shortcut-settings', () => {
+      return currentShortcuts;
+    });
+    
+    ipcMain.handle('set-shortcut-settings', async (_, settings: ShortcutSettings) => {
+      currentShortcuts = { ...DEFAULT_SHORTCUTS, ...settings };
+      await saveShortcutSettings(currentShortcuts);
+      registerGlobalShortcuts();
+      return { success: true };
+    });
+    
+    // 设置权限处理器，自动授予音频和视频权限
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowedPermissions = ['media', 'mediaKeySystem', 'audioCapture', 'display-capture'];
+      if (allowedPermissions.includes(permission)) {
+        console.log(`Permission granted: ${permission}`);
+        callback(true);
+      } else {
+        console.log(`Permission denied: ${permission}`);
+        callback(false);
+      }
+    });
+    
+    // 设置权限检查处理器
+    session.defaultSession.setPermissionCheckHandler((_webContents, permission, _requestingOrigin, _details) => {
+      const allowedPermissions = ['media', 'mediaKeySystem', 'audioCapture', 'display-capture'];
+      if (allowedPermissions.includes(permission)) {
+        return true;
+      }
+      return false;
+    });
+    
     createTray()
     updateTrayMenu()
   // Ensure recordings directory exists
   await ensureRecordingsDir()
+  
+  // 注册全局快捷键
+  registerGlobalShortcuts();
 
   registerIpcHandlers(
     createEditorWindowWrapper,
@@ -255,12 +367,19 @@ app.whenReady().then(async () => {
     () => sourceSelectorWindow,
     (recording: boolean, sourceName: string) => {
       selectedSourceName = sourceName
+      isRecording = recording  // 更新录制状态
       if (!tray) createTray();
       updateTrayMenu(recording);
       if (!recording) {
-        if (mainWindow) mainWindow.restore();
+        // 录制停止，恢复主窗口
+        if (mainWindow) mainWindow.show();
       }
     }
   )
   createWindow()
+})
+
+// 应用退出时注销快捷键
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 })

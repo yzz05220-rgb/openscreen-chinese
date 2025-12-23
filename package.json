@@ -1,7 +1,7 @@
 {
   "name": "openscreen",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -58,7 +58,7 @@
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.21",
-    "electron": "^30.0.1",
+    "electron": "^30.5.1",
     "electron-builder": "^24.13.3",
     "electron-icon-builder": "^2.0.1",
     "electron-rebuild": "^3.2.9",

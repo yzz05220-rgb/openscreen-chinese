@@ -2,12 +2,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.openscreen.chinese",
-  "asar": false,
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "**/node_modules/sharp/**/*"
+  ],
   "productName": "OpenScreen 中文版",
   "copyright": "Copyright © 2024 OpenScreen",
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
-  "compression": "normal",
+  "compression": "store",
   "directories": {
     "output": "dist-release"
   },

@@ -479,6 +479,7 @@ export default function VideoEditor() {
       return;
     }
 
+    // 使用浏览器渲染导出
     setShowExportDialog(true);
     setIsExporting(true);
     setExportProgress(null);
@@ -578,6 +579,12 @@ export default function VideoEditor() {
         }
       }
 
+      // 根据导出质量调整帧率
+      // medium: 30fps (更快导出)
+      // good: 30fps (平衡)
+      // source: 60fps (最高质量)
+      const frameRate = exportQuality === 'source' ? 60 : 30;
+
       // Get preview CONTAINER dimensions for scaling
       // Annotations render in HTML overlay matching container, not PixiJS canvas
       const playbackRef = videoPlaybackRef.current;
@@ -591,7 +598,7 @@ export default function VideoEditor() {
         videoUrl: videoPath,
         width: exportWidth,
         height: exportHeight,
-        frameRate: 60,
+        frameRate,
         bitrate,
         codec: 'avc1.640033',
         wallpaper,

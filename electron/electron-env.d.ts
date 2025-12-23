@@ -33,6 +33,11 @@ interface Window {
     getRecordedVideoPath: () => Promise<{ success: boolean; path?: string; message?: string }>
     setRecordingState: (recording: boolean) => Promise<void>
     onStopRecordingFromTray: (callback: () => void) => () => void
+    onPauseRecordingFromTray: (callback: () => void) => () => void
+    onGlobalShortcut: (callback: (action: string) => void) => () => void
+    getShortcutSettings: () => Promise<{ stopRecording: string; pauseRecording: string }>
+    setShortcutSettings: (settings: { stopRecording: string; pauseRecording: string }) => Promise<{ success: boolean }>
+    setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => void
     openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>
     saveExportedVideo: (videoData: ArrayBuffer, fileName: string) => Promise<{ success: boolean; path?: string; message?: string; cancelled?: boolean }>
     openVideoFilePicker: () => Promise<{ success: boolean; path?: string; cancelled?: boolean }>

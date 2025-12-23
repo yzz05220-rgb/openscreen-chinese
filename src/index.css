@@ -70,6 +70,27 @@
   }
 }
 
+/* 隐藏 HUD 窗口的滚动条 */
+body:has(.hud-overlay) {
+  overflow: hidden;
+}
+
+.hud-overlay {
+  overflow: hidden;
+}
+
+.hud-overlay::-webkit-scrollbar {
+  display: none;
+}
+
+/* 全局隐藏 HUD 窗口中的滚动条 */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Smooth timeline cursor animations */
 @layer utilities {
   .timeline-cursor-smooth {

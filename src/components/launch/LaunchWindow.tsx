@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import styles from "./LaunchWindow.module.css";
-import { useScreenRecorder, type AudioMode } from "../../hooks/useScreenRecorder";
+import { useScreenRecorder } from "../../hooks/useScreenRecorder";
+import { useAudioDevices, type AudioMode } from "../../hooks/useAudioDevices";
+import { AudioSettingsPanel } from "./AudioSettingsPanel";
 import { Button } from "../ui/button";
-import { BsRecordCircle } from "react-icons/bs";
+import { BsRecordCircle, BsPauseFill, BsPlayFill } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import { MdMonitor } from "react-icons/md";
 import { RxDragHandleDots2 } from "react-icons/rx";
@@ -14,10 +16,29 @@ import { ContentClamp } from "../ui/content-clamp";
 
 export function LaunchWindow() {
   const { t } = useTranslation();
-  const { recording, toggleRecording, audioMode, setAudioMode } = useScreenRecorder();
+  
+  // 使用新的音频设备管理 Hook
+  const {
+    audioInputDevices,
+    selectedMicDevice,
+    audioMode,
+    setSelectedMicDevice,
+    setAudioMode,
+    refreshDevices,
+    isLoading: isLoadingDevices
+  } = useAudioDevices();
+  
+  // 录制 Hook，传入选中的麦克风设备 ID
+  const { recording, paused, toggleRecording, togglePause } = useScreenRecorder(
+    audioMode,
+    selectedMicDevice?.deviceId || null
+  );
+  
   const [showAudioOptions, setShowAudioOptions] = useState(false);
   const audioRef = useRef<HTMLDivElement>(null);
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
+  const [pausedDuration, setPausedDuration] = useState(0);
+  const [pauseStart, setPauseStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -26,18 +47,35 @@ export function LaunchWindow() {
       if (!recordingStart) setRecordingStart(Date.now());
       timer = setInterval(() => {
         if (recordingStart) {
-          setElapsed(Math.floor((Date.now() - recordingStart) / 1000));
+          const now = Date.now();
+          let totalPaused = pausedDuration;
+          if (paused && pauseStart) {
+            totalPaused += now - pauseStart;
+          }
+          setElapsed(Math.floor((now - recordingStart - totalPaused) / 1000));
         }
       }, 1000);
     } else {
       setRecordingStart(null);
       setElapsed(0);
+      setPausedDuration(0);
+      setPauseStart(null);
       if (timer) clearInterval(timer);
     }
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [recording, recordingStart]);
+  }, [recording, recordingStart, paused, pauseStart, pausedDuration]);
+
+  // 处理暂停状态变化
+  useEffect(() => {
+    if (paused) {
+      setPauseStart(Date.now());
+    } else if (pauseStart) {
+      setPausedDuration(prev => prev + (Date.now() - pauseStart));
+      setPauseStart(null);
+    }
+  }, [paused]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -136,7 +174,7 @@ export function LaunchWindow() {
   }, [showAudioOptions]);
 
   return (
-    <div className="w-full h-full flex items-end bg-transparent pb-2">
+    <div className="w-full h-full flex items-end bg-transparent pb-2 hud-overlay overflow-hidden">
       <div
         className={`w-full max-w-[500px] mx-auto flex items-center justify-between px-4 py-2 ${styles.electronDrag}`}
         style={{
@@ -181,39 +219,19 @@ export function LaunchWindow() {
             </span>
           </Button>
           
-          {/* 下拉选项 - 向下弹出 */}
-          {showAudioOptions && (
-            <div 
-              className={`absolute left-1/2 -translate-x-1/2 top-full mt-3 rounded-xl overflow-hidden ${styles.electronNoDrag}`}
-              style={{
-                background: 'linear-gradient(135deg, rgba(30,30,40,0.95) 0%, rgba(20,20,30,0.92) 100%)',
-                backdropFilter: 'blur(32px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(32px) saturate(180%)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.2) inset',
-                border: '1px solid rgba(80,80,120,0.22)',
-                minWidth: '120px',
-                zIndex: 9999,
-              }}
-            >
-              {(['none', 'system', 'mic', 'both'] as AudioMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    setAudioMode(mode);
-                    setShowAudioOptions(false);
-                  }}
-                  className={`w-full px-4 py-2.5 flex items-center gap-2 text-xs transition-colors ${
-                    audioMode === mode 
-                      ? 'text-[#34B27B] bg-[#34B27B]/10' 
-                      : 'text-white/80 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  {getAudioIcon(mode)}
-                  <span>{t(`recording.audio_${mode}_short`)}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* 音频设置面板 */}
+          <AudioSettingsPanel
+            audioMode={audioMode}
+            onAudioModeChange={(mode) => {
+              setAudioMode(mode);
+            }}
+            selectedMicDevice={selectedMicDevice}
+            onMicDeviceChange={setSelectedMicDevice}
+            audioInputDevices={audioInputDevices}
+            isOpen={showAudioOptions}
+            onRefresh={refreshDevices}
+            isLoading={isLoadingDevices}
+          />
         </div>
 
         <div className="w-px h-6 bg-white/30" />
@@ -228,7 +246,7 @@ export function LaunchWindow() {
           {recording ? (
             <>
               <FaRegStopCircle size={14} className="text-red-400" />
-              <span className="text-red-400">{formatTime(elapsed)}</span>
+              <span className={paused ? "text-yellow-400" : "text-red-400"}>{formatTime(elapsed)}</span>
             </>
           ) : (
             <>
@@ -238,6 +256,25 @@ export function LaunchWindow() {
           )}
         </Button>
         
+        {/* 暂停按钮 - 仅在录制时显示 */}
+        {recording && (
+          <>
+            <div className="w-px h-6 bg-white/30" />
+            <Button
+              variant="link"
+              size="sm"
+              onClick={togglePause}
+              className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 text-center text-xs ${styles.electronNoDrag}`}
+              title={paused ? t('recording.resume') : t('recording.pause')}
+            >
+              {paused ? (
+                <BsPlayFill size={16} className="text-green-400" />
+              ) : (
+                <BsPauseFill size={16} className="text-yellow-400" />
+              )}
+            </Button>
+          </>
+        )}
 
         <div className="w-px h-6 bg-white/30" />
 

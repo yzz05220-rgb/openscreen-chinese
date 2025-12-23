@@ -1,41 +1,53 @@
 import { useState, useRef, useEffect } from "react";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
-
-// 音频录制模式
-export type AudioMode = 'none' | 'system' | 'mic' | 'both';
+import { type AudioMode } from "./useAudioDevices";
 
 type UseScreenRecorderReturn = {
   recording: boolean;
+  paused: boolean;
   toggleRecording: () => void;
-  audioMode: AudioMode;
-  setAudioMode: (mode: AudioMode) => void;
+  togglePause: () => void;
 };
 
-export function useScreenRecorder(): UseScreenRecorderReturn {
+export function useScreenRecorder(
+  audioMode: AudioMode,
+  selectedMicDeviceId: string | null
+): UseScreenRecorderReturn {
   const [recording, setRecording] = useState(false);
-  const [audioMode, setAudioMode] = useState<AudioMode>('none');
+  const [paused, setPaused] = useState(false);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
   const startTime = useRef<number>(0);
+  const pausedTime = useRef<number>(0);  // 累计暂停时间
+  const pauseStartTime = useRef<number>(0);  // 暂停开始时间
+  
+  // 使用 ref 来存储最新的音频设置，避免闭包问题
   const audioModeRef = useRef(audioMode);
+  const selectedMicDeviceIdRef = useRef(selectedMicDeviceId);
 
-  // 同步 audioMode 状态到 ref
+  // 同步状态到 ref
   useEffect(() => {
     audioModeRef.current = audioMode;
   }, [audioMode]);
+
+  useEffect(() => {
+    selectedMicDeviceIdRef.current = selectedMicDeviceId;
+  }, [selectedMicDeviceId]);
 
   // Target visually lossless 4K @ 60fps; fall back gracefully when hardware cannot keep up
   const TARGET_FRAME_RATE = 60;
   const TARGET_WIDTH = 3840;
   const TARGET_HEIGHT = 2160;
   const FOUR_K_PIXELS = TARGET_WIDTH * TARGET_HEIGHT;
+  
   const selectMimeType = () => {
+    // 优先使用 H.264 编码，这样转换为 MP4 时更快
     const preferred = [
-      "video/webm;codecs=av1",
-      "video/webm;codecs=h264",
+      "video/webm;codecs=h264",  // H.264 优先，转 MP4 最快
       "video/webm;codecs=vp9",
       "video/webm;codecs=vp8",
+      "video/webm;codecs=av1",
       "video/webm"
     ];
 
@@ -58,30 +70,58 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
   };
 
   const stopRecording = useRef(() => {
-    if (mediaRecorder.current?.state === "recording") {
+    if (mediaRecorder.current?.state === "recording" || mediaRecorder.current?.state === "paused") {
       if (stream.current) {
         stream.current.getTracks().forEach(track => track.stop());
       }
       mediaRecorder.current.stop();
       setRecording(false);
+      setPaused(false);
+      pausedTime.current = 0;
 
       window.electronAPI?.setRecordingState(false);
     }
   });
 
+  // 暂停/继续录制
+  const togglePause = useRef(() => {
+    if (!mediaRecorder.current) return;
+    
+    if (mediaRecorder.current.state === "recording") {
+      mediaRecorder.current.pause();
+      pauseStartTime.current = Date.now();
+      setPaused(true);
+      console.log('Recording paused');
+    } else if (mediaRecorder.current.state === "paused") {
+      mediaRecorder.current.resume();
+      // 累加暂停时间
+      pausedTime.current += Date.now() - pauseStartTime.current;
+      setPaused(false);
+      console.log('Recording resumed');
+    }
+  });
+
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let cleanupStop: (() => void) | undefined;
+    let cleanupPause: (() => void) | undefined;
     
     if (window.electronAPI?.onStopRecordingFromTray) {
-      cleanup = window.electronAPI.onStopRecordingFromTray(() => {
+      cleanupStop = window.electronAPI.onStopRecordingFromTray(() => {
         stopRecording.current();
+      });
+    }
+    
+    if (window.electronAPI?.onPauseRecordingFromTray) {
+      cleanupPause = window.electronAPI.onPauseRecordingFromTray(() => {
+        togglePause.current();
       });
     }
 
     return () => {
-      if (cleanup) cleanup();
+      if (cleanupStop) cleanupStop();
+      if (cleanupPause) cleanupPause();
       
-      if (mediaRecorder.current?.state === "recording") {
+      if (mediaRecorder.current?.state === "recording" || mediaRecorder.current?.state === "paused") {
         mediaRecorder.current.stop();
       }
       if (stream.current) {
@@ -100,45 +140,106 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       }
 
       const currentAudioMode = audioModeRef.current;
-      console.log('Audio mode:', currentAudioMode);
+      const currentMicDeviceId = selectedMicDeviceIdRef.current;
       
-      // 获取屏幕视频流（可能包含系统音频）
+      console.log('Audio mode:', currentAudioMode);
+      console.log('Selected mic device ID:', currentMicDeviceId);
+      
+      // 获取屏幕视频流（包含系统音频）
       const needsSystemAudio = currentAudioMode === 'system' || currentAudioMode === 'both';
       console.log('Needs system audio:', needsSystemAudio);
       
-      const videoStream = await (navigator.mediaDevices as any).getUserMedia({
-        audio: needsSystemAudio ? {
-          mandatory: {
-            chromeMediaSource: "desktop",
-          },
-        } : false,
-        video: {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: selectedSource.id,
-            maxWidth: TARGET_WIDTH,
-            maxHeight: TARGET_HEIGHT,
-            maxFrameRate: TARGET_FRAME_RATE,
-            minFrameRate: 30,
-          },
-        },
-      });
-
       // 收集所有轨道
-      const tracks: MediaStreamTrack[] = [...videoStream.getVideoTracks()];
-      console.log('Video tracks:', videoStream.getVideoTracks().length);
-      console.log('System audio tracks from desktop:', videoStream.getAudioTracks().length);
+      const tracks: MediaStreamTrack[] = [];
       
-      // 添加系统音频轨道
+      // 尝试同时获取视频和系统音频（这在某些系统上更可靠）
       if (needsSystemAudio) {
-        const systemAudioTracks = videoStream.getAudioTracks();
-        if (systemAudioTracks.length > 0) {
-          tracks.push(...systemAudioTracks);
-          console.log('Added system audio tracks');
-        } else {
-          console.warn('No system audio tracks available from desktop capture');
+        try {
+          console.log('Trying to get video + system audio together...');
+          const combinedStream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: {
+              mandatory: {
+                chromeMediaSource: "desktop",
+                chromeMediaSourceId: selectedSource.id,
+              },
+            },
+            video: {
+              mandatory: {
+                chromeMediaSource: "desktop",
+                chromeMediaSourceId: selectedSource.id,
+                maxWidth: TARGET_WIDTH,
+                maxHeight: TARGET_HEIGHT,
+                maxFrameRate: TARGET_FRAME_RATE,
+                minFrameRate: 30,
+              },
+            },
+          });
+          
+          tracks.push(...combinedStream.getVideoTracks());
+          tracks.push(...combinedStream.getAudioTracks());
+          console.log('Combined stream - Video tracks:', combinedStream.getVideoTracks().length, ', Audio tracks:', combinedStream.getAudioTracks().length);
+        } catch (combinedError) {
+          console.warn('无法同时获取视频和系统音频，尝试分开获取:', combinedError);
+          
+          // 分开获取视频
+          const videoStream = await (navigator.mediaDevices as any).getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: "desktop",
+                chromeMediaSourceId: selectedSource.id,
+                maxWidth: TARGET_WIDTH,
+                maxHeight: TARGET_HEIGHT,
+                maxFrameRate: TARGET_FRAME_RATE,
+                minFrameRate: 30,
+              },
+            },
+          });
+          tracks.push(...videoStream.getVideoTracks());
+          console.log('Video tracks (separate):', videoStream.getVideoTracks().length);
+          
+          // 尝试单独获取系统音频
+          try {
+            const systemAudioStream = await (navigator.mediaDevices as any).getUserMedia({
+              audio: {
+                mandatory: {
+                  chromeMediaSource: "desktop",
+                  chromeMediaSourceId: selectedSource.id,
+                },
+              },
+              video: false,
+            });
+            
+            const systemAudioTracks = systemAudioStream.getAudioTracks();
+            console.log('System audio tracks:', systemAudioTracks.length);
+            if (systemAudioTracks.length > 0) {
+              tracks.push(...systemAudioTracks);
+              console.log('Added system audio tracks');
+            }
+          } catch (systemAudioError) {
+            console.warn('无法获取系统音频:', systemAudioError);
+          }
         }
+      } else {
+        // 只获取视频，不需要系统音频
+        const videoStream = await (navigator.mediaDevices as any).getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: "desktop",
+              chromeMediaSourceId: selectedSource.id,
+              maxWidth: TARGET_WIDTH,
+              maxHeight: TARGET_HEIGHT,
+              maxFrameRate: TARGET_FRAME_RATE,
+              minFrameRate: 30,
+            },
+          },
+        });
+        tracks.push(...videoStream.getVideoTracks());
+        console.log('Video tracks (no system audio):', videoStream.getVideoTracks().length);
       }
+      
+      console.log('After video/system audio - Total tracks:', tracks.length);
 
       // 获取麦克风音频
       const needsMicAudio = currentAudioMode === 'mic' || currentAudioMode === 'both';
@@ -146,18 +247,50 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       
       if (needsMicAudio) {
         try {
+          // 构建麦克风约束
+          const micConstraints: MediaTrackConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true,
+          };
+          
+          // 如果指定了设备 ID，则使用该设备
+          if (currentMicDeviceId) {
+            micConstraints.deviceId = { exact: currentMicDeviceId };
+            console.log('Using specific mic device:', currentMicDeviceId);
+          } else {
+            console.log('Using default mic device');
+          }
+          
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-            },
+            audio: micConstraints,
             video: false,
           });
           const micTracks = micStream.getAudioTracks();
           console.log('Mic audio tracks:', micTracks.length);
+          if (micTracks.length > 0) {
+            console.log('Mic device label:', micTracks[0].label);
+          }
           tracks.push(...micTracks);
         } catch (micError) {
           console.warn('无法获取麦克风音频:', micError);
+          // 如果指定的设备失败，尝试使用默认设备
+          if (currentMicDeviceId) {
+            console.log('Falling back to default mic device...');
+            try {
+              const fallbackMicStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                },
+                video: false,
+              });
+              const fallbackMicTracks = fallbackMicStream.getAudioTracks();
+              console.log('Fallback mic audio tracks:', fallbackMicTracks.length);
+              tracks.push(...fallbackMicTracks);
+            } catch (fallbackError) {
+              console.warn('Fallback mic also failed:', fallbackError);
+            }
+          }
         }
       }
 
@@ -232,11 +365,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       recorder.onstop = async () => {
         stream.current = null;
         if (chunks.current.length === 0) return;
-        const duration = Date.now() - startTime.current;
+        // 计算实际录制时长（减去暂停时间）
+        const totalTime = Date.now() - startTime.current;
+        const duration = totalTime - pausedTime.current;
         const recordedChunks = chunks.current;
         const buggyBlob = new Blob(recordedChunks, { type: mimeType });
         // Clear chunks early to free memory immediately after blob creation
         chunks.current = [];
+        pausedTime.current = 0;
         const timestamp = Date.now();
         const videoFileName = `recording-${timestamp}.webm`;
 
@@ -277,5 +413,5 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     recording ? stopRecording.current() : startRecording();
   };
 
-  return { recording, toggleRecording, audioMode, setAudioMode };
+  return { recording, paused, toggleRecording, togglePause: togglePause.current };
 }

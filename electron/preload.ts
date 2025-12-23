@@ -1,11 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => {
+        ipcRenderer.send(channel, ...args);
+      },
+    },
     hudOverlayHide: () => {
       ipcRenderer.send('hud-overlay-hide');
     },
     hudOverlayClose: () => {
       ipcRenderer.send('hud-overlay-close');
+    },
+    // 设置鼠标事件穿透
+    setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => {
+      ipcRenderer.send('set-ignore-mouse-events', ignore, options);
     },
   getAssetBasePath: async () => {
     // ask main process for the correct base path (production vs dev)
@@ -41,6 +50,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = () => callback()
     ipcRenderer.on('stop-recording-from-tray', listener)
     return () => ipcRenderer.removeListener('stop-recording-from-tray', listener)
+  },
+  // 暂停录制事件监听
+  onPauseRecordingFromTray: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('pause-recording-from-tray', listener)
+    return () => ipcRenderer.removeListener('pause-recording-from-tray', listener)
+  },
+  // 全局快捷键事件监听
+  onGlobalShortcut: (callback: (action: string) => void) => {
+    const listener = (_event: any, action: string) => callback(action)
+    ipcRenderer.on('global-shortcut', listener)
+    return () => ipcRenderer.removeListener('global-shortcut', listener)
+  },
+  // 快捷键设置
+  getShortcutSettings: () => {
+    return ipcRenderer.invoke('get-shortcut-settings')
+  },
+  setShortcutSettings: (settings: any) => {
+    return ipcRenderer.invoke('set-shortcut-settings', settings)
   },
   openExternalUrl: (url: string) => {
     return ipcRenderer.invoke('open-external-url', url)
