@@ -16,24 +16,20 @@ import { ContentClamp } from "../ui/content-clamp";
 
 export function LaunchWindow() {
   const { t } = useTranslation();
-  
+
   // 使用新的音频设备管理 Hook
   const {
-    audioInputDevices,
     selectedMicDevice,
     audioMode,
-    setSelectedMicDevice,
     setAudioMode,
-    refreshDevices,
-    isLoading: isLoadingDevices
   } = useAudioDevices();
-  
+
   // 录制 Hook，传入选中的麦克风设备 ID
   const { recording, paused, toggleRecording, togglePause } = useScreenRecorder(
     audioMode,
     selectedMicDevice?.deviceId || null
   );
-  
+
   const [showAudioOptions, setShowAudioOptions] = useState(false);
   const audioRef = useRef<HTMLDivElement>(null);
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
@@ -100,7 +96,7 @@ export function LaunchWindow() {
     };
 
     checkSelectedSource();
-    
+
     const interval = setInterval(checkSelectedSource, 500);
     return () => clearInterval(interval);
   }, []);
@@ -113,11 +109,11 @@ export function LaunchWindow() {
 
   const openVideoFile = async () => {
     const result = await window.electronAPI.openVideoFilePicker();
-    
+
     if (result.cancelled) {
       return;
     }
-    
+
     if (result.success && result.path) {
       await window.electronAPI.setCurrentVideoPath(result.path);
       await window.electronAPI.switchToEditor();
@@ -163,18 +159,40 @@ export function LaunchWindow() {
   // 点击外部关闭下拉
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (audioRef.current && !audioRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // 检查点击是否在音频按钮区域内
+      const isInAudioRef = audioRef.current && audioRef.current.contains(target);
+      // 检查点击是否在弹出面板内（Portal 渲染的元素）
+      const isInPanel = (target as Element).closest?.('[data-audio-panel="true"]');
+      
+      if (!isInAudioRef && !isInPanel) {
         setShowAudioOptions(false);
       }
     };
     if (showAudioOptions) {
-      document.addEventListener('mousedown', handleClickOutside);
+      // 使用 mousedown 而不是 click，并添加延迟以避免立即触发
+      const timer = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showAudioOptions]);
 
+  // Windows 平台上 setIgnoreMouseEvents 的 forward 选项不能正常工作
+  // 所以我们不使用它，而是依赖 CSS pointer-events 来控制点击区域
+  // 窗口本身不设置 ignoreMouseEvents，让 CSS 来处理透明区域的点击穿透
+  useEffect(() => {
+    // 在 Windows 上不设置 ignoreMouseEvents，让窗口正常接收鼠标事件
+    // 透明区域的点击穿透通过 CSS pointer-events: none 实现
+    // window.electronAPI?.setIgnoreMouseEvents(true, { forward: true });
+  }, []);
+
   return (
-    <div className="w-full h-full flex items-end bg-transparent pb-2 hud-overlay overflow-hidden">
+    <div className="w-full h-full flex items-center justify-center bg-transparent hud-overlay pointer-events-none" style={{ paddingTop: '200px' }}>
       <div
         className={`w-full max-w-[500px] mx-auto flex items-center justify-between px-4 py-2 ${styles.electronDrag}`}
         style={{
@@ -185,6 +203,7 @@ export function LaunchWindow() {
           boxShadow: '0 4px 24px 0 rgba(0,0,0,0.28), 0 1px 3px 0 rgba(0,0,0,0.14) inset',
           border: '1px solid rgba(80,80,120,0.22)',
           minHeight: 44,
+          pointerEvents: 'auto' // Ensure this element captures clicks
         }}
       >
         <div className={`flex items-center gap-1 ${styles.electronDrag}`}> <RxDragHandleDots2 size={18} className="text-white/40" /> </div>
@@ -203,11 +222,16 @@ export function LaunchWindow() {
         <div className="w-px h-6 bg-white/30" />
 
         {/* 音频选项 */}
-        <div className="relative flex-1" ref={audioRef}>
+        <div className={`relative flex-1 ${styles.electronNoDrag}`} ref={audioRef}>
           <Button
             variant="link"
             size="sm"
-            onClick={() => !recording && setShowAudioOptions(!showAudioOptions)}
+            onClick={() => {
+              console.log('Audio button clicked, recording:', recording, 'showAudioOptions:', showAudioOptions);
+              if (!recording) {
+                setShowAudioOptions(!showAudioOptions);
+              }
+            }}
             disabled={recording}
             className={`gap-1 text-white bg-transparent hover:bg-transparent px-0 w-full text-left text-xs ${styles.electronNoDrag}`}
           >
@@ -218,19 +242,17 @@ export function LaunchWindow() {
               {getAudioLabel()}
             </span>
           </Button>
-          
+
           {/* 音频设置面板 */}
           <AudioSettingsPanel
             audioMode={audioMode}
             onAudioModeChange={(mode) => {
+              console.log('Setting audio mode to:', mode);
               setAudioMode(mode);
+              setShowAudioOptions(false);
             }}
-            selectedMicDevice={selectedMicDevice}
-            onMicDeviceChange={setSelectedMicDevice}
-            audioInputDevices={audioInputDevices}
             isOpen={showAudioOptions}
-            onRefresh={refreshDevices}
-            isLoading={isLoadingDevices}
+            anchorRef={audioRef}
           />
         </div>
 
@@ -255,7 +277,7 @@ export function LaunchWindow() {
             </>
           )}
         </Button>
-        
+
         {/* 暂停按钮 - 仅在录制时显示 */}
         {recording && (
           <>
@@ -290,7 +312,7 @@ export function LaunchWindow() {
           <span className={styles.folderText}>{t('common.open')}</span>
         </Button>
 
-         {/* Separator before hide/close buttons */}
+        {/* Separator before hide/close buttons */}
         <div className="w-px h-6 bg-white/30 mx-2" />
         <Button
           variant="link"
@@ -300,7 +322,7 @@ export function LaunchWindow() {
           onClick={sendHudOverlayHide}
         >
           <FiMinus size={18} style={{ color: '#fff', opacity: 0.7 }} />
-          
+
         </Button>
 
         <Button

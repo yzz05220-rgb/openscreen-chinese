@@ -1,4 +1,7 @@
-import { ipcMain, desktopCapturer, BrowserWindow, shell, app, dialog, screen } from 'electron'
+import { createRequire } from 'node:module'
+import type { BrowserWindow as BrowserWindowType } from 'electron'
+const require = createRequire(import.meta.url)
+const { ipcMain, desktopCapturer, shell, app, dialog, screen } = require('electron')
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { RECORDINGS_DIR } from '../main'
@@ -11,14 +14,14 @@ let recordingSourceBounds: { x: number; y: number; width: number; height: number
 
 export function registerIpcHandlers(
   createEditorWindow: () => void,
-  createSourceSelectorWindow: () => BrowserWindow,
-  getMainWindow: () => BrowserWindow | null,
-  getSourceSelectorWindow: () => BrowserWindow | null,
+  createSourceSelectorWindow: () => BrowserWindowType,
+  getMainWindow: () => BrowserWindowType | null,
+  getSourceSelectorWindow: () => BrowserWindowType | null,
   onRecordingStateChange?: (recording: boolean, sourceName: string) => void
 ) {
-  ipcMain.handle('get-sources', async (_, opts) => {
+  ipcMain.handle('get-sources', async (_: unknown, opts: Electron.SourcesOptions) => {
     const sources = await desktopCapturer.getSources(opts)
-    return sources.map(source => ({
+    return sources.map((source: any) => ({
       id: source.id,
       name: source.name,
       display_id: source.display_id,
@@ -27,7 +30,7 @@ export function registerIpcHandlers(
     }))
   })
 
-  ipcMain.handle('select-source', (_, source) => {
+  ipcMain.handle('select-source', (_: unknown, source: any) => {
     selectedSource = source
     const sourceSelectorWin = getSourceSelectorWindow()
     if (sourceSelectorWin) {
@@ -59,12 +62,12 @@ export function registerIpcHandlers(
 
 
 
-  ipcMain.handle('store-recorded-video', async (_, videoData: ArrayBuffer, fileName: string) => {
+  ipcMain.handle('store-recorded-video', async (_: unknown, videoData: ArrayBuffer, fileName: string) => {
     try {
       const videoPath = path.join(RECORDINGS_DIR, fileName)
       await fs.writeFile(videoPath, Buffer.from(videoData))
       currentVideoPath = videoPath;
-      
+
       // 保存鼠标位置数据
       if (mousePositions.length > 0) {
         const mouseDataFileName = fileName.replace(/\.[^.]+$/, '.mouse.json')
@@ -77,7 +80,7 @@ export function registerIpcHandlers(
         console.log(`Mouse data saved: ${mousePositions.length} positions`)
         mousePositions = [] // 清空数据
       }
-      
+
       return {
         success: true,
         path: videoPath,
@@ -99,14 +102,14 @@ export function registerIpcHandlers(
     try {
       const files = await fs.readdir(RECORDINGS_DIR)
       const videoFiles = files.filter(file => file.endsWith('.webm'))
-      
+
       if (videoFiles.length === 0) {
         return { success: false, message: 'No recorded video found' }
       }
-      
+
       const latestVideo = videoFiles.sort().reverse()[0]
       const videoPath = path.join(RECORDINGS_DIR, latestVideo)
-      
+
       return { success: true, path: videoPath }
     } catch (error) {
       console.error('Failed to get video path:', error)
@@ -114,12 +117,12 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle('set-recording-state', (_, recording: boolean) => {
+  ipcMain.handle('set-recording-state', (_: unknown, recording: boolean) => {
     const source = selectedSource || { name: 'Screen' }
     if (onRecordingStateChange) {
       onRecordingStateChange(recording, source.name)
     }
-    
+
     // 录屏开始时隐藏窗口，停止时恢复
     const mainWin = getMainWindow()
     if (mainWin && !mainWin.isDestroyed()) {
@@ -129,48 +132,48 @@ export function registerIpcHandlers(
       }
       // 注意：停止录制后窗口会在 onRecordingStateChange 回调中恢复
     }
-    
+
     // 鼠标位置追踪
     if (recording) {
       // 开始录制时，获取录制源的边界
       // 对于全屏录制，获取显示器边界
       // 对于窗口录制，需要从 source 获取窗口位置
       recordingSourceBounds = null
-      
+
       if (selectedSource) {
         // 检查是否是显示器录制
         if (selectedSource.display_id) {
           const displays = screen.getAllDisplays()
-          const targetDisplay = displays.find(d => String(d.id) === selectedSource.display_id)
+          const targetDisplay = displays.find((d: any) => String(d.id) === selectedSource.display_id)
           if (targetDisplay) {
             recordingSourceBounds = targetDisplay.bounds
           }
         }
-        
+
         // 如果没有找到显示器边界，使用主显示器
         if (!recordingSourceBounds) {
           const primaryDisplay = screen.getPrimaryDisplay()
           recordingSourceBounds = primaryDisplay.bounds
         }
       }
-      
+
       mousePositions = []
       mouseTrackingStartTime = Date.now()
-      
+
       // 每 33ms 记录一次鼠标位置（约 30fps）
       mouseTrackingInterval = setInterval(() => {
         const cursorPos = screen.getCursorScreenPoint()
         const time = Date.now() - mouseTrackingStartTime
-        
+
         // 将屏幕坐标转换为相对于录制区域的坐标
         let relativeX = cursorPos.x
         let relativeY = cursorPos.y
-        
+
         if (recordingSourceBounds) {
           relativeX = cursorPos.x - recordingSourceBounds.x
           relativeY = cursorPos.y - recordingSourceBounds.y
         }
-        
+
         mousePositions.push({
           time,
           x: relativeX,
@@ -188,7 +191,7 @@ export function registerIpcHandlers(
   })
 
 
-  ipcMain.handle('open-external-url', async (_, url: string) => {
+  ipcMain.handle('open-external-url', async (_: unknown, url: string) => {
     try {
       await shell.openExternal(url)
       return { success: true }
@@ -211,7 +214,7 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle('save-exported-video', async (_, videoData: ArrayBuffer, fileName: string) => {
+  ipcMain.handle('save-exported-video', async (_: unknown, videoData: ArrayBuffer, fileName: string) => {
     try {
       const result = await dialog.showSaveDialog({
         title: 'Save Exported Video',
@@ -230,7 +233,7 @@ export function registerIpcHandlers(
         };
       }
       await fs.writeFile(result.filePath, Buffer.from(videoData));
-      
+
       return {
         success: true,
         path: result.filePath,
@@ -278,7 +281,7 @@ export function registerIpcHandlers(
 
   let currentVideoPath: string | null = null;
 
-  ipcMain.handle('set-current-video-path', (_, path: string) => {
+  ipcMain.handle('set-current-video-path', (_: unknown, path: string) => {
     currentVideoPath = path;
     return { success: true };
   });
@@ -297,11 +300,11 @@ export function registerIpcHandlers(
   });
 
   // 获取视频对应的鼠标位置数据
-  ipcMain.handle('get-mouse-data', async (_, videoPath: string) => {
+  ipcMain.handle('get-mouse-data', async (_: unknown, videoPath: string) => {
     try {
       // 从视频路径推断鼠标数据文件路径
       const mouseDataPath = videoPath.replace(/\.[^.]+$/, '.mouse.json')
-      
+
       try {
         const data = await fs.readFile(mouseDataPath, 'utf-8')
         const mouseData = JSON.parse(data)
@@ -325,5 +328,24 @@ export function registerIpcHandlers(
         error: String(error)
       }
     }
+  });
+
+  ipcMain.handle('resize-overlay', (_: unknown, width: number, height: number) => {
+    const mainWin = getMainWindow();
+    if (mainWin && !mainWin.isDestroyed()) {
+      const bounds = mainWin.getBounds();
+      // Calculate new Y to keep the window grounded at the bottom
+      const bottom = bounds.y + bounds.height;
+      const newY = bottom - height;
+
+      mainWin.setBounds({
+        x: bounds.x,
+        y: newY,
+        width: width,
+        height: height
+      });
+      return { success: true };
+    }
+    return { success: false };
   });
 }

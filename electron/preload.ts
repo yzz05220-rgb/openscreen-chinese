@@ -1,21 +1,25 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import electron from 'electron'
+const { contextBridge, ipcRenderer } = electron
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    ipcRenderer: {
-      send: (channel: string, ...args: any[]) => {
-        ipcRenderer.send(channel, ...args);
-      },
+  ipcRenderer: {
+    send: (channel: string, ...args: any[]) => {
+      ipcRenderer.send(channel, ...args);
     },
-    hudOverlayHide: () => {
-      ipcRenderer.send('hud-overlay-hide');
-    },
-    hudOverlayClose: () => {
-      ipcRenderer.send('hud-overlay-close');
-    },
-    // 设置鼠标事件穿透
-    setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => {
-      ipcRenderer.send('set-ignore-mouse-events', ignore, options);
-    },
+  },
+  hudOverlayHide: () => {
+    ipcRenderer.send('hud-overlay-hide');
+  },
+  hudOverlayClose: () => {
+    ipcRenderer.send('hud-overlay-close');
+  },
+  resizeOverlay: (width: number, height: number) => {
+    return ipcRenderer.invoke('resize-overlay', width, height);
+  },
+  // 设置鼠标事件穿透
+  setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => {
+    ipcRenderer.send('set-ignore-mouse-events', ignore, options);
+  },
   getAssetBasePath: async () => {
     // ask main process for the correct base path (production vs dev)
     return await ipcRenderer.invoke('get-asset-base-path')

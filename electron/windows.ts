@@ -1,7 +1,15 @@
-import { BrowserWindow, screen } from 'electron'
-import { ipcMain } from 'electron'
+import { createRequire } from 'node:module'
+import type { BrowserWindow as BrowserWindowType } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const require = createRequire(import.meta.url)
+const electronModule = require('electron')
+console.log('Electron module keys:', Object.keys(electronModule))
+console.log('ipcMain:', electronModule.ipcMain)
+const { BrowserWindow: BrowserWindowConstructor, screen, ipcMain } = electronModule
+const BrowserWindow = BrowserWindowConstructor
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -9,7 +17,7 @@ const APP_ROOT = path.join(__dirname, '..')
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 const RENDERER_DIST = path.join(APP_ROOT, 'dist')
 
-let hudOverlayWindow: BrowserWindow | null = null;
+let hudOverlayWindow: BrowserWindowType | null = null;
 
 ipcMain.on('hud-overlay-hide', () => {
   if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
@@ -18,30 +26,31 @@ ipcMain.on('hud-overlay-hide', () => {
 });
 
 // 设置点击穿透（让透明区域可以点击到下面的内容）
-ipcMain.on('set-ignore-mouse-events', (_event, ignore: boolean, options?: { forward: boolean }) => {
+ipcMain.on('set-ignore-mouse-events', (_event: unknown, ignore: boolean, options?: { forward: boolean }) => {
   if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
     hudOverlayWindow.setIgnoreMouseEvents(ignore, options);
   }
 });
 
-export function createHudOverlayWindow(): BrowserWindow {
+export function createHudOverlayWindow(): BrowserWindowType {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { workArea } = primaryDisplay;
 
-  // 缩小窗口高度，只保留工具栏需要的高度
+  // 窗口高度需要足够容纳工具栏和向上弹出的面板
   const windowWidth = 500;
-  const windowHeight = 60;  // 从 280 改为 60，只保留工具栏高度
+  const windowHeight = 350; // 350px 高度，工具栏在中下部，上方留出空间给弹出面板
 
   const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
-  const y = Math.floor(workArea.y + workArea.height - windowHeight - 10);
+  // 窗口底部距离屏幕底部 60px，这样工具栏看起来在屏幕底部附近
+  const y = Math.floor(workArea.y + workArea.height - windowHeight - 60);
 
   const win = new BrowserWindow({
     width: windowWidth,
     height: windowHeight,
     minWidth: 500,
     maxWidth: 500,
-    minHeight: 60,
-    maxHeight: 60,
+    minHeight: 350,
+    maxHeight: 350,
     x: x,
     y: y,
     frame: false,
@@ -75,15 +84,15 @@ export function createHudOverlayWindow(): BrowserWindow {
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL + '?windowType=hud-overlay')
   } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'), { 
-      query: { windowType: 'hud-overlay' } 
+    win.loadFile(path.join(RENDERER_DIST, 'index.html'), {
+      query: { windowType: 'hud-overlay' }
     })
   }
 
   return win
 }
 
-export function createEditorWindow(): BrowserWindow {
+export function createEditorWindow(): BrowserWindowType {
   const isMac = process.platform === 'darwin';
   const isWindows = process.platform === 'win32';
 
@@ -125,17 +134,17 @@ export function createEditorWindow(): BrowserWindow {
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL + '?windowType=editor')
   } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'), { 
-      query: { windowType: 'editor' } 
+    win.loadFile(path.join(RENDERER_DIST, 'index.html'), {
+      query: { windowType: 'editor' }
     })
   }
 
   return win
 }
 
-export function createSourceSelectorWindow(): BrowserWindow {
+export function createSourceSelectorWindow(): BrowserWindowType {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
-  
+
   const win = new BrowserWindow({
     width: 620,
     height: 420,
@@ -158,8 +167,8 @@ export function createSourceSelectorWindow(): BrowserWindow {
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL + '?windowType=source-selector')
   } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'), { 
-      query: { windowType: 'source-selector' } 
+    win.loadFile(path.join(RENDERER_DIST, 'index.html'), {
+      query: { windowType: 'source-selector' }
     })
   }
 

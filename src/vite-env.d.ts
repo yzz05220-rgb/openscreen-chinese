@@ -63,5 +63,6 @@ interface Window {
     }>
     hudOverlayHide: () => void
     hudOverlayClose: () => void
+    resizeOverlay: (width: number, height: number) => Promise<{ success: boolean }>
   }
 }
